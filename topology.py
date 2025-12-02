@@ -28,8 +28,9 @@ class FVTopo(Topo):
         for i in range(4):
             self.addHost("h%d" % (i + 1), **hconfig)
 
-        # Add switch links
+        # Add switch links (one high bandwidth link and one low bandwidth)
         self.addLink("s1", "s2", **http_link_config)
+        self.addLink("s1", "s2", **video_link_config)
 
         # Add host links
         self.addLink("h1", "s1", **host_link_config)
