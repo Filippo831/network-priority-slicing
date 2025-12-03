@@ -18,9 +18,8 @@ class AddFlowEntry(app_manager.RyuApp):
 
         # out_port = slice_to_port[dpid][in_port]
         self.slice_to_port = {
-            2: {4: 2, 2: 4},
-            5: {1: 2, 2: 1},
-            7: {2: 4, 4: 2},
+            1: {3: 1, 1: 3},
+            2: {3: 1, 1: 3},
         }
 
     def add_flow(self, datapath, priority, match, actions):
