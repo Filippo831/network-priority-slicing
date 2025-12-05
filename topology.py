@@ -45,6 +45,7 @@ if __name__ == "__main__":
     topo = FVTopo()
     net = Mininet(
         topo=topo,
+        controller=RemoteController( 'c0', ip='127.0.0.1'),
         switch=OVSKernelSwitch,
         build=False,
         autoSetMacs=True,

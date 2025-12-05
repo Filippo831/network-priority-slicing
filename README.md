@@ -14,3 +14,7 @@ Keywords:
 - RYU SDN Controller
 - QoS
 - Dynamic Network Traffic
+
+# notes
+- gui topology sits at this directory
+/usr/lib/python3/dist-packages/ryu/app/gui_topology/gui_topology.py

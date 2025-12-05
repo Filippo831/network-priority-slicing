@@ -18,8 +18,8 @@ class AddFlowEntry(app_manager.RyuApp):
 
         # out_port = slice_to_port[dpid][in_port]
         self.slice_to_port = {
-            1: {3: 1, 1: 3},
-            2: {3: 1, 1: 3},
+            1: {3: 1, 1: 3, 2: 4, 4: 2},
+            2: {3: 1, 1: 3, 2: 4, 4: 2},
         }
 
     def add_flow(self, datapath, priority, match, actions):
@@ -70,6 +70,7 @@ class AddFlowEntry(app_manager.RyuApp):
             return
 
         self.logger.info("INFO packet arrived in s%s (in_port=%s)", dpid, in_port)
+        print(dpid, in_port)
         out_port = self.slice_to_port[dpid][in_port]
         actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
         match = datapath.ofproto_parser.OFPMatch(in_port=in_port)
