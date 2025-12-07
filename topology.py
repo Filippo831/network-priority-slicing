@@ -5,6 +5,23 @@ from mininet.net import Mininet
 from mininet.node import OVSKernelSwitch, RemoteController
 from mininet.cli import CLI
 from mininet.link import TCLink
+from mininet.log import info, setLogLevel
+import threading, time
+
+# @param
+#   net: network object
+#   delay: seconds to wait before running the function (default = 30)
+# 
+# @body
+#   add a host 'h5' to the network linked to s2 through http_link_config
+def add_late_hosts(net, delay=30):
+    http_link_config = {"bw": 1}
+    hconfig = {"inNamespace": True}
+    time.sleep(delay)
+    h5 = net.addHost("h5", **hconfig)
+    net.addLink("h5", "s2", **http_link_config)
+    net.configHosts()
+    info("added new host h5 connected to router s2\n")
 
 
 class FVTopo(Topo):
@@ -42,6 +59,7 @@ class FVTopo(Topo):
 topos = {"fvtopo": (lambda: FVTopo())}
 
 if __name__ == "__main__":
+    setLogLevel("info")
     topo = FVTopo()
     net = Mininet(
         topo=topo,
@@ -54,5 +72,11 @@ if __name__ == "__main__":
     )
     net.build()
     net.start()
+
+    # start the thread that will add a new host after "delay" seconds of runtime
+    t = threading.Thread(target = add_late_hosts, args=(net, 10))
+    t.deamon = True
+    t.start()
+
     CLI(net)
     net.stop()
