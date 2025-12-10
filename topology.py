@@ -29,11 +29,18 @@ class FVTopo(Topo):
         # Initialize topology
         Topo.__init__(self)
 
+        # CONFIGURATION EXAMPLE
+        # self.addLink( host, switch, bw=10, delay='5ms', loss=2,
+        # max_queue_size=1000, use_htb=True )
+
         # Create template host, switch, and link
         hconfig = {"inNamespace": True}
-        http_link_config = {"bw": 1}
-        voip_link_config = {"bw": 5}
-        video_link_config = {"bw": 10}
+
+        # low latency, low bandwidth channel
+        http_link_config = {"bw": 1, delay='5ms'}
+
+        # high latency, high bandwidth channel
+        video_link_config = {"bw": 10, delay='50ms'}
         host_link_config = {}
 
         # Create switch nodes
