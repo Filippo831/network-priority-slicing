@@ -37,10 +37,10 @@ class FVTopo(Topo):
         hconfig = {"inNamespace": True}
 
         # low latency, low bandwidth channel
-        http_link_config = {"bw": 1, delay='5ms'}
+        http_link_config = {"bw": 1, "delay": '5ms'}
 
         # high latency, high bandwidth channel
-        video_link_config = {"bw": 10, delay='50ms'}
+        video_link_config = {"bw": 10, "delay": '50ms'}
         host_link_config = {}
 
         # Create switch nodes

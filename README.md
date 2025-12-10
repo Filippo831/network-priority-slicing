@@ -15,6 +15,18 @@ Keywords:
 - QoS
 - Dynamic Network Traffic
 
+## run
+build the topology
+```
+sudo python3 topology.py
+```
+
+start the controller
+```
+ryu-manager fast_slice.py
+```
+
+
 # notes
 - gui topology sits at this directory
 /usr/lib/python3/dist-packages/ryu/app/gui_topology/gui_topology.py
