@@ -23,7 +23,7 @@ sudo python3 topology.py
 
 start the controller
 ```
-ryu-manager fast_slice.py
+ryu-manager monitor_controller.py routing_controller.py
 ```
 
 

@@ -8,10 +8,11 @@ from mininet.link import TCLink
 from mininet.log import info, setLogLevel
 import threading, time
 
+
 # @param
 #   net: network object
 #   delay: seconds to wait before running the function (default = 30)
-# 
+#
 # @body
 #   add a host 'h5' to the network linked to s2 through http_link_config
 def add_late_hosts(net, delay=30):
@@ -37,10 +38,10 @@ class FVTopo(Topo):
         hconfig = {"inNamespace": True}
 
         # low latency, low bandwidth channel
-        http_link_config = {"bw": 1, "delay": '5ms'}
+        http_link_config = {"bw": 1, "delay": "5ms"}
 
         # high latency, high bandwidth channel
-        video_link_config = {"bw": 10, "delay": '50ms'}
+        video_link_config = {"bw": 10, "delay": "50ms"}
         host_link_config = {}
 
         # Create switch nodes
@@ -70,7 +71,7 @@ if __name__ == "__main__":
     topo = FVTopo()
     net = Mininet(
         topo=topo,
-        controller=RemoteController( 'c0', ip='127.0.0.1'),
+        controller=RemoteController("c0", ip="127.0.0.1"),
         switch=OVSKernelSwitch,
         build=False,
         autoSetMacs=True,
@@ -81,7 +82,7 @@ if __name__ == "__main__":
     net.start()
 
     # start the thread that will add a new host after "delay" seconds of runtime
-    t = threading.Thread(target = add_late_hosts, args=(net, 10))
+    t = threading.Thread(target=add_late_hosts, args=(net, 10))
     t.deamon = True
     t.start()
 
