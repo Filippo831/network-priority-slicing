@@ -64,6 +64,7 @@ class FVTopo(Topo):
         self.addLink("h4", "s2", **host_link_config)
 
 
+
 topos = {"fvtopo": (lambda: FVTopo())}
 
 if __name__ == "__main__":
@@ -80,6 +81,17 @@ if __name__ == "__main__":
     )
     net.build()
     net.start()
+
+    # create some traffic between hosts
+    h1, h2, h3, h4 = net.get('h1','h2','h3','h4')
+
+    # generate traffic between h1 and h3 for 60 seconds every 5
+    h3.cmd("iperf -s &")
+    h1.cmd("iperf -c {} -t 60 -i 5 &".format(h3.IP()))
+
+    # generate traffic between h2 and h4 for 60 seconds every 5
+    h4.cmd("iperf -s &")
+    h2.cmd("iperf -c {} -t 60 -i 5 &".format(h4.IP()))
 
     # start the thread that will add a new host after "delay" seconds of runtime
     t = threading.Thread(target=add_late_hosts, args=(net, 10))

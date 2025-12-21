@@ -2,9 +2,10 @@ from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER, DEAD_DISPATCHER
 from ryu.controller.handler import set_ev_cls
-from ryu.ofproto import ofproto_v1_3
+from ryu.ofproto import ofproto_v1_0
 from ryu.lib import hub
 from ryu.app import simple_switch_13
+from ryu.topology.api import get_link, get_switch
 
 from ryu.lib.mac import haddr_to_bin
 from ryu.lib.packet import packet
@@ -15,7 +16,7 @@ from operator import attrgetter
 
 
 class AddFlowEntry(app_manager.RyuApp):
-    OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
+    OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
         super(AddFlowEntry, self).__init__(*args, **kwargs)
@@ -58,9 +59,28 @@ class AddFlowEntry(app_manager.RyuApp):
         )
         datapath.send_msg(out)
 
+    def _get_topology(self, ev):
+        # List of Switch objects
+        switches = get_switch(self, None)
+
+        # List of Link objects
+        links = get_link(self, None)
+
+        print("Switches:")
+        for sw in switches:
+            print("  dpid =", sw.dp.id)
+
+        print("Links:")
+        for link in links:
+            # Each link has src and dst, each with dpid and port_no
+            print("  %s:%d -> %s:%d" %
+                  (link.src.dpid, link.src.port_no,
+                   link.dst.dpid, link.dst.port_no))
+
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
+        self._get_topology(ev);
         msg = ev.msg
         datapath = msg.datapath
         in_port = msg.in_port
@@ -73,7 +93,6 @@ class AddFlowEntry(app_manager.RyuApp):
             # ignore lldp packet
             return
 
-        self.logger.info("INFO packet arrived in s%s (in_port=%s)", dpid, in_port)
         print(dpid, in_port)
         out_port = self.slice_to_port[dpid][in_port]
         actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
