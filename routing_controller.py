@@ -1,18 +1,14 @@
 from ryu.base import app_manager
 from ryu.controller import ofp_event
-from ryu.controller.handler import MAIN_DISPATCHER, DEAD_DISPATCHER
+from ryu.controller.handler import MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_0
-from ryu.lib import hub
-from ryu.app import simple_switch_13
 from ryu.topology.api import get_link, get_switch
 
-from ryu.lib.mac import haddr_to_bin
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 
-from operator import attrgetter
 
 
 class AddFlowEntry(app_manager.RyuApp):
@@ -78,9 +74,10 @@ class AddFlowEntry(app_manager.RyuApp):
                    link.dst.dpid, link.dst.port_no))
 
 
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
-        self._get_topology(ev);
+        self._get_topology(ev)
         msg = ev.msg
         datapath = msg.datapath
         in_port = msg.in_port
