@@ -23,8 +23,8 @@ def add_late_hosts(net, destination, delay=30):
     net.addLink("h5", "s2", **http_link_config)
     net.configHosts()
     info("added new host h5 connected to router s2\n")
-    h1.cmd("iperf -s &")
-    h5.cmd("iperf -c {} -t 60 -i 5 &".format(destination.IP()))
+    # h1.cmd("iperf -s &")
+    # h5.cmd("iperf -c {} -t 60 -i 5 &".format(destination.IP()))
 
 
 class FVTopo(Topo):
@@ -88,12 +88,12 @@ if __name__ == "__main__":
     h1, h2, h3, h4 = net.get('h1','h2','h3','h4')
 
     # generate traffic between h1 and h3 for 60 seconds every 5
-    h3.cmd("iperf -s &")
-    h1.cmd("iperf -c {} -t 60 -i 5 &".format(h3.IP()))
+    # h3.cmd("iperf -s &")
+    # h1.cmd("iperf -c {} -t 60 -i 5 &".format(h3.IP()))
 
     # generate traffic between h2 and h4 for 60 seconds every 5
-    h4.cmd("iperf -s &")
-    h2.cmd("iperf -c {} -t 60 -i 5 &".format(h4.IP()))
+    # h4.cmd("iperf -s &")
+    # h2.cmd("iperf -c {} -t 60 -i 5 &".format(h4.IP()))
 
     # start the thread that will add a new host after "delay" seconds of runtime
     t = threading.Thread(target=add_late_hosts, args=(net, h1, 10))

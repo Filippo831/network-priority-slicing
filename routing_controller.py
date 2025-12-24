@@ -1,52 +1,114 @@
 from ryu.base import app_manager
 from ryu.controller import ofp_event
-from ryu.controller.handler import MAIN_DISPATCHER
+from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
-from ryu.ofproto import ofproto_v1_0
-from ryu.topology.api import get_link, get_switch
-
+from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
-from ryu.lib.packet import ether_types
 
 
-
-class AddFlowEntry(app_manager.RyuApp):
-    OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
+# create a ryu application class that extends app_manager.RyuApp
+# it will work over a dumbell topology. There are specified a list of hosts for each switch that
+# will use a low latency path. Between the 2 switches there are 2 links, one low latency and one high bandwidth.
+# Using a simple static routing approach, the hosts specified will use the low latency path, while all other hosts will use the high bandwidth path
+class SimpleRouting13(app_manager.RyuApp):
+    OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
-        super(AddFlowEntry, self).__init__(*args, **kwargs)
-        # out_port = slice_to_port[dpid][in_port]
-        self.slice_to_port = {
-            1: {3: 1, 1: 3, 2: 4, 4: 2},
-            2: {3: 1, 1: 3, 2: 4, 4: 2},
+        super(SimpleRouting13, self).__init__(*args, **kwargs)
+        # define the ports for each switch that will use the low latency path
+        self.low_latency_hosts = {
+            1: [3],
+            2: [3],
         }
 
-    def add_flow(self, datapath, priority, match, actions):
+    @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
+    def switch_features_handler(self, ev):
+        datapath = ev.msg.datapath
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        # construct flow_mod message and send it.
-        mod = parser.OFPFlowMod(
-            datapath=datapath,
-            match=match,
-            cookie=0,
-            command=ofproto.OFPFC_ADD,
-            idle_timeout=0,
-            hard_timeout=0,
-            priority=priority,
-            flags=ofproto.OFPFF_SEND_FLOW_REM,
-            actions=actions,
-        )
+        # install table-miss flow entry
+        match = parser.OFPMatch()
+        actions = [
+            parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)
+        ]
+        self.add_flow(datapath, 0, match, actions)
+
+    def add_flow(self, datapath, priority, match, actions, buffer_id=None):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
+        if buffer_id:
+            mod = parser.OFPFlowMod(
+                datapath=datapath,
+                buffer_id=buffer_id,
+                priority=priority,
+                match=match,
+                instructions=inst,
+            )
+        else:
+            mod = parser.OFPFlowMod(
+                datapath=datapath,
+                priority=priority,
+                match=match,
+                instructions=inst,
+            )
         datapath.send_msg(mod)
 
-    def _send_package(self, msg, datapath, in_port, actions):
-        data = None
+    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
+    def _packet_in_handler(self, ev):
+        if ev.msg.msg_len < ev.msg.total_len:
+            self.logger.debug(
+                "packet truncated: only %s of %s bytes",
+                ev.msg.msg_len,
+                ev.msg.total_len,
+            )
+        msg = ev.msg
+        datapath = msg.datapath
         ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        in_port = msg.match["in_port"]
+
+        pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocols(ethernet.ethernet)[0]
+
+        dst = eth.dst
+        src = eth.src
+
+        dpid = datapath.id
+
+
+        # when the port number is greater than or equal to 3, it means the packet is coming from a host
+        # connected to the switch. In this case, we decide the output port based on whether the host is in the low latency list or not.
+        if in_port >= 3:
+            if in_port in self.low_latency_hosts[dpid]:
+                self.logger.info("low latency for host %s on switch %s", src, dpid)
+                out_port = 1
+            else:
+                self.logger.info("high bandwidth for host %s on switch %s", src, dpid)
+                out_port = 2
+
+        else:
+            # default behavior: flood
+            out_port = ofproto.OFPP_FLOOD
+
+        actions = [parser.OFPActionOutput(out_port)]
+
+        # install a flow to avoid packet_in next time
+        match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
+        if msg.buffer_id != ofproto.OFP_NO_BUFFER:
+            self.add_flow(datapath, 1, match, actions, msg.buffer_id)
+            return
+        else:
+            self.add_flow(datapath, 1, match, actions)
+
+        data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
             data = msg.data
 
-        out = datapath.ofproto_parser.OFPPacketOut(
+        out = parser.OFPPacketOut(
             datapath=datapath,
             buffer_id=msg.buffer_id,
             in_port=in_port,
@@ -54,51 +116,3 @@ class AddFlowEntry(app_manager.RyuApp):
             data=data,
         )
         datapath.send_msg(out)
-
-    def _get_topology(self, ev):
-        # List of Switch objects
-        switches = get_switch(self, None)
-
-        # List of Link objects
-        links = get_link(self, None)
-
-        print("Switches:")
-        for sw in switches:
-            print("  dpid =", sw.dp.id)
-
-        print("Links:")
-        for link in links:
-            # Each link has src and dst, each with dpid and port_no
-            print("  %s:%d -> %s:%d" %
-                  (link.src.dpid, link.src.port_no,
-                   link.dst.dpid, link.dst.port_no))
-
-
-
-    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-    def _packet_in_handler(self, ev):
-        self._get_topology(ev)
-        msg = ev.msg
-        datapath = msg.datapath
-        in_port = msg.in_port
-        dpid = datapath.id
-
-        pkt = packet.Packet(msg.data)
-        eth = pkt.get_protocol(ethernet.ethernet)
-
-        if eth.ethertype == ether_types.ETH_TYPE_LLDP:
-            # ignore lldp packet
-            return
-
-        print(dpid, in_port)
-        out_port = self.slice_to_port[dpid][in_port]
-        actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
-        match = datapath.ofproto_parser.OFPMatch(in_port=in_port)
-        self.logger.info("INFO sending packet from s%s (out_port=%s)", dpid, out_port)
-
-        self.add_flow(datapath, 2, match, actions)
-
-
-
-
-
