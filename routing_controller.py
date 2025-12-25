@@ -79,7 +79,6 @@ class SimpleRouting13(app_manager.RyuApp):
 
         dpid = datapath.id
 
-
         # when the port number is greater than or equal to 3, it means the packet is coming from a host
         # connected to the switch. In this case, we decide the output port based on whether the host is in the low latency list or not.
         if in_port >= 3:
@@ -116,3 +115,4 @@ class SimpleRouting13(app_manager.RyuApp):
             data=data,
         )
         datapath.send_msg(out)
+

@@ -11,21 +11,46 @@ import threading, time
 
 # @param
 #   net: network object
+#   destination: host object to which traffic will be sent
 #   delay: seconds to wait before running the function (default = 30)
 #
 # @body
 #   add a host 'h5' to the network linked to s2 through http_link_config
-def add_late_hosts(net, destination, delay=30):
-    http_link_config = {"bw": 1}
-    hconfig = {"inNamespace": True}
-    time.sleep(delay)
-    h5 = net.addHost("h5", **hconfig)
-    net.addLink("h5", "s2", **http_link_config)
-    net.configHosts()
-    info("added new host h5 connected to router s2\n")
-    # h1.cmd("iperf -s &")
-    # h5.cmd("iperf -c {} -t 60 -i 5 &".format(destination.IP()))
+# def add_late_hosts(net, destination, delay=30):
+#     time.sleep(delay)
+#     info("*** Adding late host h5\n")
+#     hconfig = {"inNamespace": True}
+#     http_link_config = {"bw": 1, "delay": "5ms"}
+#
+#     h5 = net.addHost("h5", **hconfig)
+#     s2 = net.get("s2")
+#     net.addLink(h5, s2, **http_link_config)
+#     info("*** Late host h5 added and linked to s2\n")
+#     h5_intf = h5.defaultIntf()
+#     h5.setIP("10.0.0.5/24", intf=h5_intf)
+#     h5.cmd("ip link set {} up".format(h5_intf))
+#
+#     # generate traffic between h5 and destination for 60 seconds every 5
+#     # destination.cmd("iperf -s &")
+#     # h5.cmd("iperf -c {} -t 60 -i 5 &".format(destination.IP()))
 
+# @param
+#   net: network object
+#   delay: seconds to wait before running the function (default = 10)
+# @body
+#   cut one of the two links between s1 and s2
+def cut_link(net, delay=10):
+    time.sleep(delay)
+    info("*** Cutting one link between s1 and s2\n")
+    s1 = net.get("s1")
+    s2 = net.get("s2")
+    links = net.linksBetween(s1, s2)
+    if len(links) >= 2:
+        link_to_cut = links[0]
+        net.delLink(link_to_cut)
+        info("*** Link between s1 and s2 cut\n")
+    else:
+        info("*** Not enough links to cut between s1 and s2\n")
 
 class FVTopo(Topo):
     def __init__(self):
@@ -95,10 +120,15 @@ if __name__ == "__main__":
     # h4.cmd("iperf -s &")
     # h2.cmd("iperf -c {} -t 60 -i 5 &".format(h4.IP()))
 
+    # start the thread that will cut the link between s1 and s2 after "delay" seconds of runtime
+    t2 = threading.Thread(target=cut_link, args=(net, 10))
+    t2.daemon = True
+    t2.start()
+
     # start the thread that will add a new host after "delay" seconds of runtime
-    t = threading.Thread(target=add_late_hosts, args=(net, h1, 10))
-    t.deamon = True
-    t.start()
+    # t = threading.Thread(target=add_late_hosts, args=(net, h1, 10))
+    # t.daemon = True
+    # t.start()
 
     CLI(net)
     net.stop()
