@@ -22,6 +22,19 @@ class SimpleRouting13(app_manager.RyuApp):
             2: [3],
         }
 
+        # define for each router which port is associated with the low latency connection
+        self.low_latency_link = {
+            1: 1,
+            2: 1,
+        }
+
+        # init the connection between the two router, then they are automatically updated when something happens
+        # TODO: see if it's possible to generate this automatically
+        self.router_to_router_ports = {
+            b"s1": [1,2],
+            b"s2": [1,2],
+        }
+
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
         datapath = ev.msg.datapath
@@ -82,10 +95,10 @@ class SimpleRouting13(app_manager.RyuApp):
         # when the port number is greater than or equal to 3, it means the packet is coming from a host
         # connected to the switch. In this case, we decide the output port based on whether the host is in the low latency list or not.
         if in_port >= 3:
-            if in_port in self.low_latency_hosts[dpid]:
+            if in_port in self.low_latency_hosts[dpid] and 1 in self.router_to_router_ports[("s{}".format(dpid)).encode("utf-8")]:
                 self.logger.info("low latency for host %s on switch %s", src, dpid)
                 out_port = 1
-            else:
+            elif 2 in self.router_to_router_ports[("s{}".format(dpid)).encode("utf-8")]:
                 self.logger.info("high bandwidth for host %s on switch %s", src, dpid)
                 out_port = 2
 
@@ -115,4 +128,24 @@ class SimpleRouting13(app_manager.RyuApp):
             data=data,
         )
         datapath.send_msg(out)
+
+    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
+    def _port_status_handler(self, ev):
+        msg = ev.msg
+        reason = msg.reason
+        port_no = msg.desc.port_no
+
+        router = msg.desc.name.split(b"-")[0]
+
+        ofproto = msg.datapath.ofproto
+        if reason == ofproto.OFPPR_ADD:
+            self.logger.info("port added %s", port_no)
+        elif reason == ofproto.OFPPR_DELETE:
+            self.logger.info("port deleted %s", port_no)
+            print(router)
+            self.router_to_router_ports[router].remove(port_no)
+        elif reason == ofproto.OFPPR_MODIFY:
+            self.logger.info("port modified %s", port_no)
+        else:
+            self.logger.info("Illeagal port state %s %s", port_no, reason)
 
