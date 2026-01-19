@@ -121,9 +121,9 @@ if __name__ == "__main__":
     # h2.cmd("iperf -c {} -t 60 -i 5 &".format(h4.IP()))
 
     # start the thread that will cut the link between s1 and s2 after "delay" seconds of runtime
-    t2 = threading.Thread(target=cut_link, args=(net, 10))
-    t2.daemon = True
-    t2.start()
+    # t2 = threading.Thread(target=cut_link, args=(net, 10))
+    # t2.daemon = True
+    # t2.start()
 
     # start the thread that will add a new host after "delay" seconds of runtime
     # t = threading.Thread(target=add_late_hosts, args=(net, h1, 10))
