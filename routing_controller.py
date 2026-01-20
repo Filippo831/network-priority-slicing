@@ -5,6 +5,7 @@ from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
+from ryu.topology import api as topo_api
 
 
 '''
@@ -29,6 +30,7 @@ class SimpleRouting13(app_manager.RyuApp):
         # }
         
         # define the priority of the hosts in an array where the index indicates the priority, lower is better
+        self.hosts_list = ["00:00:00:00:00:01", "00:00:00:00:00:03","00:00:00:00:00:02", "00:00:00:00:00:04"]
         self.hosts_priorities_vector = [["00:00:00:00:00:01", "00:00:00:00:00:03"], ["00:00:00:00:00:02", "00:00:00:00:00:04"]]
         self.hosts_priorities_set = {}
 
@@ -77,6 +79,21 @@ class SimpleRouting13(app_manager.RyuApp):
         ]
         self.add_flow(datapath, 0, match, actions)
 
+    def get_host_ports(self, datapath):
+        # 1. Get all active ports on this switch
+        all_ports = [port.port_no for port in datapath.ports.values() if port.state == 0]
+        
+        # 2. Get all ports that are used to connect to other switches (links)
+        switch_links = topo_api.get_all_link(self)
+        link_ports = []
+        for link in switch_links:
+            if link.src.dpid == datapath.id:
+                link_ports.append(link.src.port_no)
+                
+        # 3. Host ports = All ports - Link ports
+        host_ports = [p for p in all_ports if p not in link_ports]
+        return host_ports
+
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -120,72 +137,49 @@ class SimpleRouting13(app_manager.RyuApp):
         src = eth.src
 
         dpid = datapath.id
+        # self.logger.info("{} : {}, router = {}\n".format(src, dst, dpid))
+        # self.logger.info("{}\n".format(datapath.to_str()))
 
-        # # when the port number is greater than or equal to 3, it means the packet is coming from a host
-        # # connected to the switch. In this case, we decide the output port based on whether the host is in the low latency list or not.
-        # if in_port >= 3:
-        #     if in_port in self.low_latency_hosts[dpid] and 1 in self.router_to_router_ports[("s{}".format(dpid)).encode("utf-8")]:
-        #         self.logger.info("low latency for host %s on switch %s", src, dpid)
-        #         out_port = 1
-        #     elif 2 in self.router_to_router_ports[("s{}".format(dpid)).encode("utf-8")]:
-        #         self.logger.info("high bandwidth for host %s on switch %s", src, dpid)
-        #         out_port = 2
-        #
-        # else:
-        #     # default behavior: flood
-        #     out_port = ofproto.OFPP_FLOOD
+        host_ports = self.get_host_ports(datapath)
+        print(host_ports)
 
         # TODO: handle incoming packets
         # - check the input mac address and get the priority number
         # - if not defined the port yet, flood it to the port with same priority number (maybe create a selector to define if using only the port with the same priority number or ever the lower priorities)
 
-        if src in self.hosts_priorities_set.keys()
-            input_packet_priority = self.hosts_priorities_set[src]
-
-            output_ports = router_links_priorities[str(dpid)][input_packet_priority]
-            self.logger.info(output_ports)
-
-        # actions = [parser.OFPActionOutput(out_port)]
+        # actions = []
+        # if src in self.hosts_priorities_set.keys() and dst not in self.hosts_list:
+        #     input_packet_priority = self.hosts_priorities_set[src]
         #
-        # # install a flow to avoid packet_in next time
-        # match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
-        # if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-        #     self.add_flow(datapath, 1, match, actions, msg.buffer_id)
-        #     return
+        #     out_port = self.router_links_priorities[str(dpid)][input_packet_priority]
+        #     for port in out_port:
+        #         if port != in_port:
+        #             actions.append(parser.OFPActionOutput(port))
+        #
         # else:
-        #     self.add_flow(datapath, 1, match, actions)
-        #
-        # data = None
-        # if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-        #     data = msg.data
-        #
-        # out = parser.OFPPacketOut(
-        #     datapath=datapath,
-        #     buffer_id=msg.buffer_id,
-        #     in_port=in_port,
-        #     actions=actions,
-        #     data=data,
-        # )
-        # datapath.send_msg(out)
+        #     out_port = ofproto.OFPP_FLOOD
+        #     actions = [parser.OFPActionOutput(out_port)]
+        out_port = ofproto.OFPP_FLOOD
+        actions = [parser.OFPActionOutput(out_port)]
 
-    # get port events to check when a connection is not available anymore, if so change the route
-    # @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
-    # def _port_status_handler(self, ev):
-    #     msg = ev.msg
-    #     reason = msg.reason
-    #     port_no = msg.desc.port_no
-    #
-    #     router = msg.desc.name.split(b"-")[0]
-    #
-    #     ofproto = msg.datapath.ofproto
-    #     if reason == ofproto.OFPPR_ADD:
-    #         self.logger.info("port added %s", port_no)
-    #     elif reason == ofproto.OFPPR_DELETE:
-    #         self.logger.info("port deleted %s", port_no)
-    #         print(router)
-    #         self.router_to_router_ports[router].remove(port_no)
-    #     elif reason == ofproto.OFPPR_MODIFY:
-    #         self.logger.info("port modified %s", port_no)
-    #     else:
-    #         self.logger.info("Illeagal port state %s %s", port_no, reason)
-    #
+        # install a flow to avoid packet_in next time
+        match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
+        if msg.buffer_id != ofproto.OFP_NO_BUFFER:
+            self.add_flow(datapath, 1, match, actions, msg.buffer_id)
+            return
+        else:
+            self.add_flow(datapath, 1, match, actions)
+
+        data = None
+        if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+            data = msg.data
+
+        out = parser.OFPPacketOut(
+            datapath=datapath,
+            buffer_id=msg.buffer_id,
+            in_port=in_port,
+            actions=actions,
+            data=data,
+        )
+        datapath.send_msg(out)
+
