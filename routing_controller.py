@@ -22,12 +22,7 @@ class SimpleRouting13(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(SimpleRouting13, self).__init__(*args, **kwargs)
 
-        # TODO:remove this if the rest works
-        # define the ports for each switch that will use the low latency path
-        # self.low_latency_hosts = {
-        #     1: [3],
-        #     2: [3],
-        # }
+        self.mac_to_port = {}
         
         # define the priority of the hosts in an array where the index indicates the priority, lower is better
         self.hosts_list = ["00:00:00:00:00:01", "00:00:00:00:00:03","00:00:00:00:00:02", "00:00:00:00:00:04"]
@@ -39,12 +34,6 @@ class SimpleRouting13(app_manager.RyuApp):
             for mac in priority_array:
                 self.hosts_priorities_set[mac] = index
 
-        # TODO:remove this if the rest works
-        # define for each router which port is associated with the low latency connection
-        # self.low_latency_link = {
-        #     1: 1,
-        #     2: 1,
-        # }
 
         # define the priority of links between the routers. The lowest priority of the router gets the traffic from that priority level to the lowest.
         # {"router_id": [vector of priorities]}
@@ -79,20 +68,6 @@ class SimpleRouting13(app_manager.RyuApp):
         ]
         self.add_flow(datapath, 0, match, actions)
 
-    def get_host_ports(self, datapath):
-        # 1. Get all active ports on this switch
-        all_ports = [port.port_no for port in datapath.ports.values() if port.state == 0]
-        
-        # 2. Get all ports that are used to connect to other switches (links)
-        switch_links = topo_api.get_all_link(self)
-        link_ports = []
-        for link in switch_links:
-            if link.src.dpid == datapath.id:
-                link_ports.append(link.src.port_no)
-                
-        # 3. Host ports = All ports - Link ports
-        host_ports = [p for p in all_ports if p not in link_ports]
-        return host_ports
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
         ofproto = datapath.ofproto
@@ -137,30 +112,50 @@ class SimpleRouting13(app_manager.RyuApp):
         src = eth.src
 
         dpid = datapath.id
-        # self.logger.info("{} : {}, router = {}\n".format(src, dst, dpid))
-        # self.logger.info("{}\n".format(datapath.to_str()))
 
-        host_ports = self.get_host_ports(datapath)
-        print(host_ports)
+        self.mac_to_port.setdefault(dpid, {})
+
+        # learn a mac address to avoid FLOOD next time.
+        if not dst.startswith("33:33"):
+            self.mac_to_port[dpid][src] = in_port
 
         # TODO: handle incoming packets
-        # - check the input mac address and get the priority number
-        # - if not defined the port yet, flood it to the port with same priority number (maybe create a selector to define if using only the port with the same priority number or ever the lower priorities)
+        # - check the priority of the source and destination
+        # - check if mac_to_port has an entry for the destination
+        # - get the lowest priority (higher priority number) between source and destination
+        # - if the port is a router-to-router port, check if the priority matches with the determined priority
+        # - if the priority does not match, change the port to the correct one
+        # - if it's not a router-to-router port, forward normally
+        # - if no entry in mac_to_port, FLOOD
+        src_priority = self.hosts_priorities_set.get(src, None)
+        dst_priority = self.hosts_priorities_set.get(dst, None)
 
-        # actions = []
-        # if src in self.hosts_priorities_set.keys() and dst not in self.hosts_list:
-        #     input_packet_priority = self.hosts_priorities_set[src]
-        #
-        #     out_port = self.router_links_priorities[str(dpid)][input_packet_priority]
-        #     for port in out_port:
-        #         if port != in_port:
-        #             actions.append(parser.OFPActionOutput(port))
-        #
-        # else:
-        #     out_port = ofproto.OFPP_FLOOD
-        #     actions = [parser.OFPActionOutput(out_port)]
-        out_port = ofproto.OFPP_FLOOD
-        actions = [parser.OFPActionOutput(out_port)]
+        # print mac_to_port table
+        # self.logger.info("%s\n", self.mac_to_port)
+        actions = []
+
+        if dst in self.mac_to_port[dpid]:
+            out_port = self.mac_to_port[dpid][dst]
+            actions = [parser.OFPActionOutput(out_port)]
+
+            # check if the out_port is a router-to-router port
+            router_ports = self.router_links_priorities_set.get(str(dpid), {})
+            port_priority = router_ports.get(out_port, None)
+
+            if src_priority is not None and dst_priority is not None:
+                flow_priority = min(src_priority, dst_priority)
+
+                # if the port priority does not match the flow priority, find the correct port
+                if port_priority is not None and port_priority != flow_priority:
+                    actions = []
+                    # find the correct port for the flow priority and update the port in mac_to_port
+                    for port, priority in router_ports.items():
+                        if priority == flow_priority:
+                            out_port = port
+                            actions.append(parser.OFPActionOutput(out_port))
+        else:
+            out_port = ofproto.OFPP_FLOOD
+            actions = [parser.OFPActionOutput(out_port)]
 
         # install a flow to avoid packet_in next time
         match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
