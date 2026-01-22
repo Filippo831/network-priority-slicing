@@ -72,23 +72,27 @@ class FVTopo(Topo):
         host_link_config = {}
 
         # Create switch nodes
-        for i in range(2):
+        for i in range(3):
             sconfig = {"dpid": "%016x" % (i + 1)}
             self.addSwitch("s%d" % (i + 1), **sconfig)
 
         # Create host nodes
-        for i in range(4):
+        for i in range(6):
             self.addHost("h%d" % (i + 1), **hconfig)
 
         # Add switch links (one high bandwidth link and one low bandwidth)
         self.addLink("s1", "s2", **http_link_config)
         self.addLink("s1", "s2", **video_link_config)
+        self.addLink("s1", "s3", **http_link_config)
+        self.addLink("s1", "s3", **video_link_config)
 
         # Add host links
         self.addLink("h1", "s1", **host_link_config)
         self.addLink("h2", "s1", **host_link_config)
         self.addLink("h3", "s2", **host_link_config)
         self.addLink("h4", "s2", **host_link_config)
+        self.addLink("h5", "s3", **host_link_config)
+        self.addLink("h6", "s3", **host_link_config)
 
 
 
