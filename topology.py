@@ -65,34 +65,34 @@ class FVTopo(Topo):
         hconfig = {"inNamespace": True}
 
         # low latency, low bandwidth channel
-        http_link_config = {"bw": 1, "delay": "5ms"}
+        http_link_config = {"bw": 0.1, "delay": "5ms"}
 
         # high latency, high bandwidth channel
-        video_link_config = {"bw": 10, "delay": "50ms"}
+        video_link_config = {"bw": 1, "delay": "50ms"}
         host_link_config = {}
 
         # Create switch nodes
-        for i in range(3):
+        for i in range(2):
             sconfig = {"dpid": "%016x" % (i + 1)}
             self.addSwitch("s%d" % (i + 1), **sconfig)
 
         # Create host nodes
-        for i in range(6):
+        for i in range(4):
             self.addHost("h%d" % (i + 1), **hconfig)
 
         # Add switch links (one high bandwidth link and one low bandwidth)
         self.addLink("s1", "s2", **http_link_config)
         self.addLink("s1", "s2", **video_link_config)
-        self.addLink("s1", "s3", **http_link_config)
-        self.addLink("s1", "s3", **video_link_config)
+        # self.addLink("s1", "s3", **http_link_config)
+        # self.addLink("s1", "s3", **video_link_config)
 
         # Add host links
         self.addLink("h1", "s1", **host_link_config)
         self.addLink("h2", "s1", **host_link_config)
         self.addLink("h3", "s2", **host_link_config)
         self.addLink("h4", "s2", **host_link_config)
-        self.addLink("h5", "s3", **host_link_config)
-        self.addLink("h6", "s3", **host_link_config)
+        # self.addLink("h5", "s3", **host_link_config)
+        # self.addLink("h6", "s3", **host_link_config)
 
 
 

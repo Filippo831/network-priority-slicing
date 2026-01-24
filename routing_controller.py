@@ -5,6 +5,7 @@ from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
+from ryu.lib.packet import ether_types
 from ryu.topology import api as topo_api
 import pprint
 
@@ -19,12 +20,14 @@ class SimpleRouting13(app_manager.RyuApp):
         self.mac_to_port_unknown = {}
         self.switch_hosts = {}
         
+        # self.hosts_list = ["00:00:00:00:00:01", "00:00:00:00:00:03","00:00:00:00:00:02", 
+        #                   "00:00:00:00:00:04", "00:00:00:00:00:05", "00:00:00:00:00:06"]
         self.hosts_list = ["00:00:00:00:00:01", "00:00:00:00:00:03","00:00:00:00:00:02", 
-                          "00:00:00:00:00:04", "00:00:00:00:00:05", "00:00:00:00:00:06"]
+                          "00:00:00:00:00:04"]
         
         self.hosts_priorities_vector = [
-            ["00:00:00:00:00:01", "00:00:00:00:00:03", "00:00:00:00:00:05"], 
-            ["00:00:00:00:00:02", "00:00:00:00:00:04", "00:00:00:00:00:06"]
+            ["00:00:00:00:00:01", "00:00:00:00:00:03"], 
+            ["00:00:00:00:00:02", "00:00:00:00:00:04"]
         ]
         
         self.hosts_priorities_set = {}
@@ -36,7 +39,7 @@ class SimpleRouting13(app_manager.RyuApp):
         self.router_links_priorities = {
             "1": [[1, 3], [2, 4]], 
             "2": [[1], [2]], 
-            "3": [[1], [2]]
+            # "3": [[1], [2]]
         }
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -55,6 +58,7 @@ class SimpleRouting13(app_manager.RyuApp):
         if dpid_str in self.router_links_priorities:
             # Get the slice ports for the specific priority
             slice_ports = self.router_links_priorities[dpid_str][priority]
+            # print(f"Slice ports for dpid {dpid_str}, priority {priority}: {slice_ports}")
             for port in slice_ports:
                 if port != in_port:
                     actions.append(parser.OFPActionOutput(port))
@@ -64,6 +68,7 @@ class SimpleRouting13(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
         inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
+
         mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
                                 match=match, instructions=inst, buffer_id=buffer_id) if buffer_id \
             else parser.OFPFlowMod(datapath=datapath, priority=priority,
@@ -85,15 +90,21 @@ class SimpleRouting13(app_manager.RyuApp):
         src = eth.src
         dpid = datapath.id
 
+        if eth.ethertype == ether_types.ETH_TYPE_LLDP:
+            # ignore lldp packet
+            return
+
         # 1. Update Topology: Map hosts to switches
         # We need to know which switch (dpid) and port each host is connected to
-        hosts = topo_api.get_host(self)
-        for host in hosts:
-            # Structure: { mac: (dpid, port) }
-            self.switch_hosts[host.mac] = (host.port.dpid, host.port.port_no)
-
+        if len(self.switch_hosts) < len(self.hosts_list):
+            hosts = topo_api.get_host(self)
+            for host in hosts:
+                # Structure: { mac: (dpid, port) }
+                if host.mac in self.hosts_list:
+                    self.switch_hosts[host.mac] = (host.port.dpid, host.port.port_no)
 
         actions = []
+        # print(f"Packet in DPID: {dpid}, SRC: {src}, DST: {dst}, IN_PORT: {in_port}")
 
         # 2. Handle Non-Priority / Unknown Traffic
         if src not in self.hosts_list or dst not in self.hosts_list:
@@ -106,44 +117,6 @@ class SimpleRouting13(app_manager.RyuApp):
             else:
                 actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
 
-        # 3. Handle Sliced (Priority) Traffic
-        else:
-            src_priority = self.hosts_priorities_set.get(src)
-            dst_priority = self.hosts_priorities_set.get(dst)
-            
-            # Check if we have discovered the destination host yet
-            if dst not in self.switch_hosts:
-                # If destination is unknown, flood ONLY through slice-specific ports
-                actions = self._get_slice_discovery_actions(dpid, dst_priority, in_port, parser)
-            else:
-                dst_sw_dpid, dst_out_port = self.switch_hosts[dst]
-                src_sw_dpid, _ = self.switch_hosts[src]
-                if src_sw_dpid != dpid:
-                    self.switch_priority_to_port.setdefault(dpid, {}).setdefault(src_priority, {})
-                    self.switch_priority_to_port[dpid][src_priority][src_sw_dpid] = in_port
-
-                # Case A: Destination host is on the CURRENT switch
-                if dst_sw_dpid == dpid:
-                    actions = [parser.OFPActionOutput(dst_out_port)]
-                
-                # Case B: Destination host is on a DIFFERENT switch
-                else:
-                    pprint.pp(self.switch_priority_to_port)
-
-                    # Forwarding Lookup: Do we know which port leads to the dst_sw_dpid?
-                    # We check the switch_priority_to_port for an entry for the destination switch
-                    known_port = self.switch_priority_to_port.get(dpid, {}).get(dst_priority, {}).get(dst_sw_dpid)
-
-                    if known_port:
-                        # Route is established! Use the specific port.
-                        actions = [parser.OFPActionOutput(known_port)]
-                    else:
-                        # Route unknown: Forward to all slice ports for discovery
-                        actions = self._get_slice_discovery_actions(dpid, dst_priority, in_port, parser)
-
-        # 4. Install Flow and Send Packet
-        if actions:
-            # Install flow to the switch to handle subsequent packets
             match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
             
             # If we have a buffer_id, provide it to add_flow to reduce controller load
@@ -152,6 +125,78 @@ class SimpleRouting13(app_manager.RyuApp):
                 return
             else:
                 self.add_flow(datapath, 1, match, actions)
+
+            data = None
+            if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+                data = msg.data
+
+            out = parser.OFPPacketOut(
+                datapath=datapath,
+                buffer_id=msg.buffer_id,
+                in_port=in_port,
+                actions=actions,
+                data=data
+            )
+            datapath.send_msg(out)
+
+        # 3. Handle Sliced (Priority) Traffic
+        else:
+
+
+            src_priority = self.hosts_priorities_set.get(src)
+            # Check if we have not discovered the destination host yet
+            if dst not in self.switch_hosts:
+                # If destination is unknown, flood ONLY through slice-specific ports
+                actions = self._get_slice_discovery_actions(dpid, src_priority, in_port, parser)
+
+            else:
+                dst_priority = self.hosts_priorities_set.get(dst)
+
+                dst_sw_dpid, dst_out_port = self.switch_hosts[dst]
+                src_sw_dpid, _ = self.switch_hosts[src]
+                # print("inside sliced traffic handling")
+
+                # Update Routing Table: Learn which port leads to the source switch for this priority, only if not in the same switch
+                if src_sw_dpid != dpid:
+                    # print("inside updating routing table")
+                    self.switch_priority_to_port.setdefault(dpid, {}).setdefault(src_priority, {})
+                    self.switch_priority_to_port[dpid][src_priority][src_sw_dpid] = in_port
+
+
+                # Case A: Destination host is on the CURRENT switch
+                if dst_sw_dpid == dpid:
+                    # print("inside same switch forwarding")
+                    actions = [parser.OFPActionOutput(dst_out_port)]
+                
+                # Case B: Destination host is on a DIFFERENT switch
+                else:
+                    # Forwarding Lookup: Do we know which port leads to the dst_sw_dpid?
+                    # We check the switch_priority_to_port for an entry for the destination switch
+                    known_port = self.switch_priority_to_port.get(dpid, {}).get(src_priority, {}).get(dst_sw_dpid)
+
+                    # print the src, dst, dpid, src_priority, known_port for debugging
+
+                    # print("inside different switch forwarding")
+                    if known_port:
+                        # print("inside known port forwarding")
+                        # Route is established! Use the specific port.
+                        actions = [parser.OFPActionOutput(known_port)]
+                    else:
+                        # print("inside unknown port forwarding")
+                        # Route unknown: Forward to all slice ports for discovery
+                        actions = self._get_slice_discovery_actions(dpid, src_priority, in_port, parser)
+
+        # 4. Install Flow and Send Packet
+        if actions:
+            # Install flow to the switch to handle subsequent packets
+            # match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
+            
+            # If we have a buffer_id, provide it to add_flow to reduce controller load
+            # if msg.buffer_id != ofproto.OFP_NO_BUFFER:
+            #     self.add_flow(datapath, 1, match, actions, msg.buffer_id)
+            #     return
+            # else:
+            #     self.add_flow(datapath, 1, match, actions)
 
             # Send the current packet out
             data = None
@@ -165,5 +210,6 @@ class SimpleRouting13(app_manager.RyuApp):
                 actions=actions,
                 data=data
             )
+            # pprint.pprint(actions)
             datapath.send_msg(out)
 
