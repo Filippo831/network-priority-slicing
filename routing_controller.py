@@ -37,7 +37,8 @@ class SimpleRouting13(app_manager.RyuApp):
 
         # Port mapping for slicing
         self.router_links_priorities = {
-            "1": [[1, 3], [2, 4]], 
+            # "1": [[1, 3], [2, 4]], 
+            "1": [[1], [2]], 
             "2": [[1], [2]], 
             # "3": [[1], [2]]
         }
@@ -167,12 +168,14 @@ class SimpleRouting13(app_manager.RyuApp):
                 if dst_sw_dpid == dpid:
                     # print("inside same switch forwarding")
                     actions = [parser.OFPActionOutput(dst_out_port)]
+                    self.logger.info(f"Forwarding within same switch DPID: {dpid} to port {dst_out_port}")
                 
                 # Case B: Destination host is on a DIFFERENT switch
                 else:
                     # Forwarding Lookup: Do we know which port leads to the dst_sw_dpid?
                     # We check the switch_priority_to_port for an entry for the destination switch
                     known_port = self.switch_priority_to_port.get(dpid, {}).get(src_priority, {}).get(dst_sw_dpid)
+                    self.logger.info(f"Forwarding from DPID: {dpid} to DPID: {dst_sw_dpid}, known_port: {known_port}, src_priority: {src_priority}")
 
                     # print the src, dst, dpid, src_priority, known_port for debugging
 
@@ -181,6 +184,7 @@ class SimpleRouting13(app_manager.RyuApp):
                         # print("inside known port forwarding")
                         # Route is established! Use the specific port.
                         actions = [parser.OFPActionOutput(known_port)]
+
                     else:
                         # print("inside unknown port forwarding")
                         # Route unknown: Forward to all slice ports for discovery
@@ -188,16 +192,15 @@ class SimpleRouting13(app_manager.RyuApp):
 
         # 4. Install Flow and Send Packet
         if actions:
+
             # Install flow to the switch to handle subsequent packets
             # match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
-            
-            # If we have a buffer_id, provide it to add_flow to reduce controller load
+            #
+            # # If we have a buffer_id, provide it to add_flow to reduce controller load
             # if msg.buffer_id != ofproto.OFP_NO_BUFFER:
             #     self.add_flow(datapath, 1, match, actions, msg.buffer_id)
-            #     return
             # else:
             #     self.add_flow(datapath, 1, match, actions)
-
             # Send the current packet out
             data = None
             if msg.buffer_id == ofproto.OFP_NO_BUFFER:
