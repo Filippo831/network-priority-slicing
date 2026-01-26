@@ -15,27 +15,81 @@ class SimpleRouting13(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(SimpleRouting13, self).__init__(*args, **kwargs)
 
-        # Structure: {dpid: {priority: {dest_sw_dpid: port}}}
+        '''
+            self.switch_priority_to_port
+            @structure: {dpid: {priority: {dest_sw_dpid: port}}}
+            - dpid: current switch id
+            - priority: priority of the src host
+            - dest_sw_dpid: id of the switch connected to the receiving host
+            - port: port to which forward the packet to reach the dest_sw_dpid based on the priority level
+
+            Utilizzato per capire dove inoltrare i pacchetti per ogni switch in base alla prioritá dell'host che ha inviato il pacchetto e allo switch di destinazione
+        '''
         self.switch_priority_to_port = {}
+
+        '''
+            self.mac_to_port_unknown
+            @structure: {dpid: {dst: port}}
+            - dpid: current switch id
+            - dst: destination mac address
+            - port: port to which forward the packet to reach the dest_sw_dpid based on the priority level
+
+            Utilizzato per inoltrare i pacchetti di traffico che non sono generati dagli host
+        '''
         self.mac_to_port_unknown = {}
+
+        '''
+            self.switch_hosts
+            @structure: {mac: (dpid, port)}
+            - mac: host mac address
+            - dpid: switch id to which the host is connected
+            - port: port number on the switch to which the host is connected
+
+            Utilizzato per mappare gli host agli switch a cui sono attaccati e alla porta a cui sono attaccati
+        '''
         self.switch_hosts = {}
         
         # self.hosts_list = ["00:00:00:00:00:01", "00:00:00:00:00:03","00:00:00:00:00:02", 
         #                   "00:00:00:00:00:04", "00:00:00:00:00:05", "00:00:00:00:00:06"]
+        # TODO: sta lista qui sotto si potrebbe fare con una funzione di ryu.topology.api che tira fuori tutti gli host
         self.hosts_list = ["00:00:00:00:00:01", "00:00:00:00:00:03","00:00:00:00:00:02", 
                           "00:00:00:00:00:04"]
         
+        '''
+            self.hosts_priorities_vector
+            @structure: [ [priority_0_host_macs], [priority_1_host_macs], ... ]
+            - priority_n_host_macs: list of host mac addresses belonging to priority n
+
+            ogni host viene mappato al suo livello di prioritá in base all'indice dell'array in cui si trova dentro
+        '''
         self.hosts_priorities_vector = [
             ["00:00:00:00:00:01", "00:00:00:00:00:03"], 
             ["00:00:00:00:00:02", "00:00:00:00:00:04"]
         ]
         
+        '''
+            self.hosts_priorities_set
+            @structure: {mac: priority_index}
+            - mac: host mac address
+            - priority_index: index of the priority level the host belongs to
+
+            Utilizzato per vedere piú velocemente a quale livello di prioritá appartiene un host
+        '''
         self.hosts_priorities_set = {}
+
+        # Build the hosts_priorities_set for quick lookup
         for index, priority_array in enumerate(self.hosts_priorities_vector):
             for mac in priority_array:
                 self.hosts_priorities_set[mac] = index
 
-        # Port mapping for slicing
+        '''
+            self.router_links_priorities
+            @structure: {dpid: [ [priority_0_ports], [priority_1_ports], ... ] }
+            - dpid: switch id
+            - priority_n_ports: list of ports on the switch that belong to priority n
+
+            Per ogni switch viene indicata la prioritá della porta in base all'indice dell'array in cui si trova dentro
+        '''
         self.router_links_priorities = {
             # "1": [[1, 3], [2, 4]], 
             "1": [[1], [2]], 
@@ -43,6 +97,14 @@ class SimpleRouting13(app_manager.RyuApp):
             # "3": [[1], [2]]
         }
 
+    '''
+        @param
+        - ev: EventOFPSwitchFeatures
+        @body
+        - Install table-miss flow entry to send unmatched packets to the controller
+
+        Ho copiato questa funzione dalla documentazione, non so esattamante cosa faccia
+    '''
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
         datapath = ev.msg.datapath
@@ -52,19 +114,43 @@ class SimpleRouting13(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
 
+    '''
+        @param
+        - dpid: switch id
+        - priority: priority level of the traffic
+        - in_port: port on which the packet arrived
+        - parser: OpenFlow parser for creating actions
+        @return
+        - actions: list of OFPActionOutput for all ports belonging to the given priority, excluding in_port
+        @body
+        - When discovering the route, forward the packet to all the ports of the switch that share the same priority value. Avoid sharing to the input port to prevent loops.
+    '''
     def _get_slice_discovery_actions(self, dpid, priority, in_port, parser):
-        """Returns a list of output actions for all ports belonging to a priority slice."""
         actions = []
+
+        # get the string value of the number dpid because the set needs a string as key
         dpid_str = str(dpid)
+
         if dpid_str in self.router_links_priorities:
             # Get the slice ports for the specific priority
             slice_ports = self.router_links_priorities[dpid_str][priority]
-            # print(f"Slice ports for dpid {dpid_str}, priority {priority}: {slice_ports}")
+
+            # Create output actions for all slice ports except the in_port
             for port in slice_ports:
                 if port != in_port:
                     actions.append(parser.OFPActionOutput(port))
         return actions
 
+    '''
+        @param
+        - datapath: datapath object representing the switch
+        - priority: priority of the flow entry
+        - match: match object defining the flow match criteria
+        - actions: list of actions to apply for the flow
+        - buffer_id: optional buffer ID for the packet
+        @body
+        - Helper function to add a flow entry to the switch
+    '''
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -77,6 +163,15 @@ class SimpleRouting13(app_manager.RyuApp):
         datapath.send_msg(mod)
 
 
+    '''
+        @param
+        - ev: EventOFPPacketIn
+        @body
+        - Main packet-in handler
+        - Updates topology mapping of hosts to switches
+        - Handles both unknown/non-priority traffic and sliced/priority traffic
+        - Installs flow entries for future packets
+    '''
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         msg = ev.msg
@@ -100,21 +195,23 @@ class SimpleRouting13(app_manager.RyuApp):
         if len(self.switch_hosts) < len(self.hosts_list):
             hosts = topo_api.get_host(self)
             for host in hosts:
-                # Structure: { mac: (dpid, port) }
+
                 if host.mac in self.hosts_list:
                     self.switch_hosts[host.mac] = (host.port.dpid, host.port.port_no)
 
         actions = []
-        # print(f"Packet in DPID: {dpid}, SRC: {src}, DST: {dst}, IN_PORT: {in_port}")
 
         # 2. Handle Non-Priority / Unknown Traffic
         if src not in self.hosts_list or dst not in self.hosts_list:
+            # map the src to the dpid so when a packet has to go to that src, it knows to which port to forward the packet
             self.mac_to_port_unknown.setdefault(dpid, {})
             self.mac_to_port_unknown[dpid][src] = in_port
             
+            # if the mapping is present, use it to find the right port
             if dst in self.mac_to_port_unknown[dpid]:
                 out_port = self.mac_to_port_unknown[dpid][dst]
                 actions = [parser.OFPActionOutput(out_port)]
+            # if the mapping is not present, flood the packet
             else:
                 actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
 
@@ -142,8 +239,6 @@ class SimpleRouting13(app_manager.RyuApp):
 
         # 3. Handle Sliced (Priority) Traffic
         else:
-
-
             src_priority = self.hosts_priorities_set.get(src)
             # Check if we have not discovered the destination host yet
             if dst not in self.switch_hosts:
@@ -159,14 +254,12 @@ class SimpleRouting13(app_manager.RyuApp):
 
                 # Update Routing Table: Learn which port leads to the source switch for this priority, only if not in the same switch
                 if src_sw_dpid != dpid:
-                    # print("inside updating routing table")
                     self.switch_priority_to_port.setdefault(dpid, {}).setdefault(src_priority, {})
                     self.switch_priority_to_port[dpid][src_priority][src_sw_dpid] = in_port
 
 
                 # Case A: Destination host is on the CURRENT switch
                 if dst_sw_dpid == dpid:
-                    # print("inside same switch forwarding")
                     actions = [parser.OFPActionOutput(dst_out_port)]
                     self.logger.info(f"Forwarding within same switch DPID: {dpid} to port {dst_out_port}")
                 
@@ -177,16 +270,11 @@ class SimpleRouting13(app_manager.RyuApp):
                     known_port = self.switch_priority_to_port.get(dpid, {}).get(src_priority, {}).get(dst_sw_dpid)
                     self.logger.info(f"Forwarding from DPID: {dpid} to DPID: {dst_sw_dpid}, known_port: {known_port}, src_priority: {src_priority}")
 
-                    # print the src, dst, dpid, src_priority, known_port for debugging
-
-                    # print("inside different switch forwarding")
                     if known_port:
-                        # print("inside known port forwarding")
                         # Route is established! Use the specific port.
                         actions = [parser.OFPActionOutput(known_port)]
 
                     else:
-                        # print("inside unknown port forwarding")
                         # Route unknown: Forward to all slice ports for discovery
                         actions = self._get_slice_discovery_actions(dpid, src_priority, in_port, parser)
 
@@ -194,13 +282,14 @@ class SimpleRouting13(app_manager.RyuApp):
         if actions:
 
             # Install flow to the switch to handle subsequent packets
-            # match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
-            #
-            # # If we have a buffer_id, provide it to add_flow to reduce controller load
-            # if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-            #     self.add_flow(datapath, 1, match, actions, msg.buffer_id)
-            # else:
-            #     self.add_flow(datapath, 1, match, actions)
+            match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
+
+            # If we have a buffer_id, provide it to add_flow to reduce controller load
+            if msg.buffer_id != ofproto.OFP_NO_BUFFER:
+                self.add_flow(datapath, 1, match, actions, msg.buffer_id)
+            else:
+                self.add_flow(datapath, 1, match, actions)
+
             # Send the current packet out
             data = None
             if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -213,6 +302,6 @@ class SimpleRouting13(app_manager.RyuApp):
                 actions=actions,
                 data=data
             )
-            # pprint.pprint(actions)
+
             datapath.send_msg(out)
 

@@ -15,6 +15,15 @@ Keywords:
 - QoS
 - Dynamic Network Traffic
 
+# todo
+## fixes
+- check if the forwarding logic is correct
+- understand if the packet takes the right route
+
+## future implementation
+- simulate a break in one of the links using a thread in topology.py
+- when forwarding check if there is a channel that satisfies the priority requirements, if use another link (if the host priority value is too low, use the lowest priority value present in the links, if the priority value is too high, use the highest priority value present in the links)
+
 ## run
 build the topology
 ```
