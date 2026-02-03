@@ -6,6 +6,7 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
+from ryu.lib import hub
 from ryu.topology import api as topo_api
 import pprint
 
@@ -51,9 +52,9 @@ class SimpleRouting13(app_manager.RyuApp):
         
         # self.hosts_list = ["00:00:00:00:00:01", "00:00:00:00:00:03","00:00:00:00:00:02", 
         #                   "00:00:00:00:00:04", "00:00:00:00:00:05", "00:00:00:00:00:06"]
-        # TODO: sta lista qui sotto si potrebbe fare con una funzione di ryu.topology.api che tira fuori tutti gli host
-        self.hosts_list = ["00:00:00:00:00:01", "00:00:00:00:00:03","00:00:00:00:00:02", 
-                          "00:00:00:00:00:04"]
+
+        self.hosts_list = ["00:00:00:00:00:01", "00:00:00:00:00:03","00:00:00:00:00:02"]
+
         
         '''
             self.hosts_priorities_vector
@@ -62,9 +63,13 @@ class SimpleRouting13(app_manager.RyuApp):
 
             ogni host viene mappato al suo livello di prioritá in base all'indice dell'array in cui si trova dentro
         '''
+        # self.hosts_priorities_vector = [
+        #     ["00:00:00:00:00:01", "00:00:00:00:00:03", "00:00:00:00:00:05"], 
+        #     ["00:00:00:00:00:02", "00:00:00:00:00:04", "00:00:00:00:00:06"]
+        # ]
         self.hosts_priorities_vector = [
             ["00:00:00:00:00:01", "00:00:00:00:00:03"], 
-            ["00:00:00:00:00:02", "00:00:00:00:00:04"]
+            ["00:00:00:00:00:02"]
         ]
         
         '''
@@ -96,6 +101,11 @@ class SimpleRouting13(app_manager.RyuApp):
             "2": [[1], [2]], 
             # "3": [[1], [2]]
         }
+
+        # Start monitoring thread
+        self.monitor_thread = hub.spawn(self._monitor)
+
+        self.datapaths = {}
 
     '''
         @param
@@ -162,6 +172,16 @@ class SimpleRouting13(app_manager.RyuApp):
                                    match=match, instructions=inst)
         datapath.send_msg(mod)
 
+    '''
+        @body
+        every 10 seconds clear the topology mapping of hosts to switches to account for possible changes in the network
+    '''
+    def _update_topology(self):
+        while True:
+            self.switch_hosts = {}
+            hub.sleep(10)
+            self.hosts_list = topo_api.get_host(self)
+
 
     '''
         @param
@@ -186,9 +206,12 @@ class SimpleRouting13(app_manager.RyuApp):
         src = eth.src
         dpid = datapath.id
 
-        if eth.ethertype == ether_types.ETH_TYPE_LLDP:
-            # ignore lldp packet
-            return
+        # print the incoming packet info
+
+        # if eth.ethertype == ether_types.ETH_TYPE_LLDP:
+        #     # ignore lldp packet
+        #     return
+        
 
         # 1. Update Topology: Map hosts to switches
         # We need to know which switch (dpid) and port each host is connected to
@@ -250,7 +273,6 @@ class SimpleRouting13(app_manager.RyuApp):
 
                 dst_sw_dpid, dst_out_port = self.switch_hosts[dst]
                 src_sw_dpid, _ = self.switch_hosts[src]
-                # print("inside sliced traffic handling")
 
                 # Update Routing Table: Learn which port leads to the source switch for this priority, only if not in the same switch
                 if src_sw_dpid != dpid:
@@ -261,14 +283,12 @@ class SimpleRouting13(app_manager.RyuApp):
                 # Case A: Destination host is on the CURRENT switch
                 if dst_sw_dpid == dpid:
                     actions = [parser.OFPActionOutput(dst_out_port)]
-                    self.logger.info(f"Forwarding within same switch DPID: {dpid} to port {dst_out_port}")
                 
                 # Case B: Destination host is on a DIFFERENT switch
                 else:
                     # Forwarding Lookup: Do we know which port leads to the dst_sw_dpid?
                     # We check the switch_priority_to_port for an entry for the destination switch
                     known_port = self.switch_priority_to_port.get(dpid, {}).get(src_priority, {}).get(dst_sw_dpid)
-                    self.logger.info(f"Forwarding from DPID: {dpid} to DPID: {dst_sw_dpid}, known_port: {known_port}, src_priority: {src_priority}")
 
                     if known_port:
                         # Route is established! Use the specific port.
@@ -286,15 +306,16 @@ class SimpleRouting13(app_manager.RyuApp):
 
             # If we have a buffer_id, provide it to add_flow to reduce controller load
             if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-                self.add_flow(datapath, 1, match, actions, msg.buffer_id)
+                self.add_flow(datapath, 100, match, actions, msg.buffer_id)
             else:
-                self.add_flow(datapath, 1, match, actions)
+                self.add_flow(datapath, 100, match, actions)
 
             # Send the current packet out
             data = None
             if msg.buffer_id == ofproto.OFP_NO_BUFFER:
                 data = msg.data
 
+            
             out = parser.OFPPacketOut(
                 datapath=datapath,
                 buffer_id=msg.buffer_id,
@@ -304,4 +325,69 @@ class SimpleRouting13(app_manager.RyuApp):
             )
 
             datapath.send_msg(out)
+
+    '''
+    MONITORING
+    '''
+    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, CONFIG_DISPATCHER])
+    def _state_change_handler(self, ev):
+        datapath = ev.datapath
+        if ev.state == MAIN_DISPATCHER:
+            self.datapaths[datapath.id] = datapath
+        elif ev.state is None:
+            if datapath.id in self.datapaths:
+                del self.datapaths[datapath.id]
+
+    def _request_stats(self, datapath):
+        self.logger.debug('Sending stats request to: %016x', datapath.id)
+        ofp = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        # Request Port Stats
+        req = parser.OFPPortStatsRequest(datapath, 0, ofp.OFPP_ANY)
+        datapath.send_msg(req)
+
+    '''
+        @body
+        - Periodically request port statistics from all connected switches
+    '''
+    def _monitor(self):
+        while True:
+            for dp in self.datapaths.values():
+                self._request_stats(dp)
+            hub.sleep(10)
+
+            
+    '''
+        @body
+        - Handle port stats reply messages
+        - Calculate and log port that connects the switches to eachother utilization in percentage based on rx and tx bytes
+            - priority 0 links: bandwidth = 10 Mbps
+            - priority 1 links: bandwidth = 5 Mbps
+    '''
+    @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
+    def _port_stats_reply_handler(self, ev):
+        body = ev.msg.body
+
+        for stat in body:
+            # Check if the port is one of the inter-switch links based on the configured priorities
+            dpid_str = str(ev.msg.datapath.id)
+            if dpid_str in self.router_links_priorities:
+                for priority, ports in enumerate(self.router_links_priorities[dpid_str]):
+                    if stat.port_no in ports:
+                        # Calculate utilization
+                        bandwidth = 10 * 1e6 if priority == 0 else 5 * 1e6  # Convert Mbps to bps
+                        rx_bytes = stat.rx_bytes
+                        tx_bytes = stat.tx_bytes
+                        total_bytes = rx_bytes + tx_bytes
+                        utilization = (total_bytes * 8) / bandwidth * 100  # Convert bytes to bits and calculate percentage
+
+                        self.logger.info(
+                            "Switch %s Port %s (Priority %s) Utilization: %.2f%%",
+                            ev.msg.datapath.id,
+                            stat.port_no,
+                            priority,
+                            utilization
+                        )
+
 
