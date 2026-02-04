@@ -72,27 +72,32 @@ class FVTopo(Topo):
         host_link_config = {"bw": 5, "delay": "1ms", "max_queue_size":1000}
 
         # Create switch nodes
-        for i in range(2):
+        for i in range(3):
             sconfig = {"dpid": "%016x" % (i + 1)}
             self.addSwitch("s%d" % (i + 1), **sconfig)
 
         # Create host nodes
-        for i in range(3):
-            self.addHost("h%d" % (i + 1), **hconfig)
+        self.addHost('h1', ip='10.0.0.1', mac='00:00:00:00:00:01')
+        self.addHost('h2', ip='10.0.0.2', mac='00:00:00:00:00:02')
+        self.addHost('h3', ip='10.0.0.3', mac='00:00:00:00:00:03')
+        self.addHost('h4', ip='10.0.0.4', mac='00:00:00:00:00:04')
+        self.addHost('h5', ip='10.0.0.5', mac='00:00:00:00:00:05')
+        self.addHost('h6', ip='10.0.0.6', mac='00:00:00:00:00:06')
+
 
         # Add switch links (one high bandwidth link and one low bandwidth)
         self.addLink("s1", "s2", **http_link_config)
         self.addLink("s1", "s2", **video_link_config)
-        # self.addLink("s1", "s3", **http_link_config)
-        # self.addLink("s1", "s3", **video_link_config)
+        self.addLink("s1", "s3", **http_link_config)
+        self.addLink("s1", "s3", **video_link_config)
 
         # Add host links
         self.addLink("h1", "s1", **host_link_config)
         self.addLink("h2", "s1", **host_link_config)
         self.addLink("h3", "s2", **host_link_config)
-        # self.addLink("h4", "s2", **host_link_config)
-        # self.addLink("h5", "s3", **host_link_config)
-        # self.addLink("h6", "s3", **host_link_config)
+        self.addLink("h4", "s2", **host_link_config)
+        self.addLink("h5", "s3", **host_link_config)
+        self.addLink("h6", "s3", **host_link_config)
 
 
 
@@ -115,14 +120,14 @@ if __name__ == "__main__":
 
     # # create some traffic between hosts
     # h1, h2, h3, h4 = net.get('h1','h2','h3','h4')
-    h1, h2, h3 = net.get('h1','h2','h3')
+    # h1, h2, h3 = net.get('h1','h2','h3')
 
     # generate traffic between h1 and h3 for 60 seconds every 5
-    h3.cmd("iperf -s &")
-    h1.cmd("iperf -c {} -t 60 -i 5 &".format(h3.IP()))
-
-    # generate traffic between h2 and h3 for 60 seconds every 5
-    h2.cmd("iperf -c {} -t 60 -i 5 &".format(h3.IP()))
+    # h3.cmd("iperf -s &")
+    # h1.cmd("iperf -c {} -t 60 -i 5 &".format(h3.IP()))
+    #
+    # # generate traffic between h2 and h3 for 60 seconds every 5
+    # h2.cmd("iperf -c {} -t 60 -i 5 &".format(h3.IP()))
 
     # start the thread that will cut the link between s1 and s2 after "delay" seconds of runtime
     # t2 = threading.Thread(target=cut_link, args=(net, 10))
