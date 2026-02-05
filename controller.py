@@ -21,9 +21,10 @@ class SimpleRouting13(app_manager.RyuApp):
         # router_links_priorities format: { "dpid_str": [ [priority0_ports], [priority1_ports], ... ] }
         self.router_links_priorities = {
             "1": [[1, 3], [2, 4]],
-            "2": [[], [1], [2]],
-            "3": [[1], [], [2]]
+            "2": [[1], [2]],
+            "3": [[1], [2]]
         }
+
         self.routing = Routing(self.router_links_priorities)
 
         # Learned routing table: {dpid: {priority: {dest_sw_dpid: port}}}
@@ -48,9 +49,7 @@ class SimpleRouting13(app_manager.RyuApp):
         # Priority groups (index = priority level)
         self.hosts_priorities_vector = [
             ["10.0.0.1", "10.0.0.3", "10.0.0.5"],
-            ["10.0.0.2", "10.0.0.4"],
-            [],
-            ["10.0.0.6"]
+            ["10.0.0.2", "10.0.0.4", "10.0.0.6"],
              
         ]
 
@@ -138,6 +137,7 @@ class SimpleRouting13(app_manager.RyuApp):
         # 2) Sliced / Priority traffic
         # ---------------------------
         # Retrieve priority of source; default to None (should exist for known hosts)
+
         src_priority = self.hosts_priorities_set.get(src_ip)
 
         # if source host not found in priorities set, add it with lowest priority
@@ -158,7 +158,6 @@ class SimpleRouting13(app_manager.RyuApp):
             if src_sw_dpid != dpid:
                 self.switch_priority_to_port.setdefault(dpid, {}).setdefault(src_priority, {})
                 self.switch_priority_to_port[dpid][src_priority][src_sw_dpid] = in_port
-                pprint.pprint(self.switch_priority_to_port)
 
             # If destination is on the same switch: deliver locally
             if dst_sw_dpid == dpid:
@@ -170,31 +169,36 @@ class SimpleRouting13(app_manager.RyuApp):
                               .get(dst_sw_dpid))
 
                 if known_port:
+                    actions = [parser.OFPActionDecNwTtl() ,parser.OFPActionOutput(known_port)]
+                    match = parser.OFPMatch(in_port=in_port,
+                                            ipv4_src=src_ip,
+                                            ipv4_dst=dst_ip,
+                                            eth_type=ether_types.ETH_TYPE_IP)
+                    install_flow(match, actions)
                     actions = [parser.OFPActionOutput(known_port)]
                 else:
                     # Unknown route: do slice-specific discovery (send to slice ports except in_port)
                     actions = self.routing.get_slice_discovery_actions(dpid, src_priority, in_port, parser)
 
                     # if actions is empty, it means this switch has no ports in the source host's priority slice.
-                    # In that case, we higher gradually the priority until we find some ports to send to
-                    # if there is no port with higher priority number, get the ports with the highest priority number for that switch
+                    # If so, check if the src priority is lower than the lowest priority that reaches the destination switch, if so get the 
+                    # lowest priority available. If not get the next lower priority that reaches the destination switch
                     if not actions:
-                        # if the priority is already the highest, get the highest available
-                        if src_priority > len(self.router_links_priorities.get(str(dpid))) - 1:
-                            max_priority = len(self.router_links_priorities.get(str(dpid)))
-                            if max_priority != 0:
-                                actions = self.routing.get_slice_discovery_actions(dpid, max_priority - 1, in_port, parser)
+                        available_priorities = sorted(
+                            [p for p in self.switch_priority_to_port.get(dpid, {}) if
+                             dst_sw_dpid in self.switch_priority_to_port[dpid][p]]
+                        )
+                        if available_priorities:
+                            if src_priority > available_priorities[-1]:
+                                selected_priority = available_priorities[-1]
                             else:
-                                # flood the packet if no priority information is available
-                                actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
-                        else:
-                            # incrementally increase priority until we find some ports
-                            next_priority = src_priority + 1
-                            while self.router_links_priorities.get(str(dpid)) and next_priority < len(self.router_links_priorities.get(str(dpid))):
-                                actions = self.routing.get_slice_discovery_actions(dpid, next_priority, in_port, parser)
-                                if actions:
-                                    break
-                                next_priority += 1
+                                lower_priorities = [p for p in available_priorities if p > src_priority]
+                                selected_priority = lower_priorities[0] if lower_priorities else None
+
+                            if selected_priority is not None:
+                                known_port = self.switch_priority_to_port[dpid][selected_priority][dst_sw_dpid]
+                                actions = [parser.OFPActionOutput(known_port)]
+                        
 
 
 
@@ -203,11 +207,8 @@ class SimpleRouting13(app_manager.RyuApp):
         # 3) Install flow + send PacketOut if actions were determined
         # ---------------------------
         if actions:
-            match = parser.OFPMatch(in_port=in_port,
-                                    ipv4_src=src_ip,
-                                    ipv4_dst=dst_ip,
-                                    eth_type=ether_types.ETH_TYPE_IP)
-            install_flow(match, actions)
+            # decrement ttl of a packet to avoid loops in case of discovery
+            actions = [parser.OFPActionDecNwTtl()] + actions
             data = None if msg.buffer_id != ofproto.OFP_NO_BUFFER else msg.data
             send_packetout(actions, data)
 

@@ -119,8 +119,9 @@ if __name__ == "__main__":
     net.start()
 
     # # create some traffic between hosts
-    # h1, h2, h3, h4 = net.get('h1','h2','h3','h4')
+    h1, h2, h3, h4 = net.get('h1','h2','h3','h4')
     # h1, h2, h3 = net.get('h1','h2','h3')
+    # h3.cmd("ffmpeg -re -i input_video.mp4 -c copy -f mpegts udp://10.0.0.5:1234")
 
     # generate traffic between h1 and h3 for 60 seconds every 5
     # h3.cmd("iperf -s &")
