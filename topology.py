@@ -9,30 +9,6 @@ from mininet.log import info, setLogLevel
 import threading, time
 
 
-# @param
-#   net: network object
-#   destination: host object to which traffic will be sent
-#   delay: seconds to wait before running the function (default = 30)
-#
-# @body
-#   add a host 'h5' to the network linked to s2 through http_link_config
-# def add_late_hosts(net, destination, delay=30):
-#     time.sleep(delay)
-#     info("*** Adding late host h5\n")
-#     hconfig = {"inNamespace": True}
-#     http_link_config = {"bw": 1, "delay": "5ms"}
-#
-#     h5 = net.addHost("h5", **hconfig)
-#     s2 = net.get("s2")
-#     net.addLink(h5, s2, **http_link_config)
-#     info("*** Late host h5 added and linked to s2\n")
-#     h5_intf = h5.defaultIntf()
-#     h5.setIP("10.0.0.5/24", intf=h5_intf)
-#     h5.cmd("ip link set {} up".format(h5_intf))
-#
-#     # generate traffic between h5 and destination for 60 seconds every 5
-#     # destination.cmd("iperf -s &")
-#     # h5.cmd("iperf -c {} -t 60 -i 5 &".format(destination.IP()))
 
 # @param
 #   net: network object
@@ -120,25 +96,9 @@ if __name__ == "__main__":
 
     # # create some traffic between hosts
     h1, h2, h3, h4 = net.get('h1','h2','h3','h4')
-    # h1, h2, h3 = net.get('h1','h2','h3')
-    # h3.cmd("ffmpeg -re -i input_video.mp4 -c copy -f mpegts udp://10.0.0.5:1234")
 
-    # generate traffic between h1 and h3 for 60 seconds every 5
-    # h3.cmd("iperf -s &")
-    # h1.cmd("iperf -c {} -t 60 -i 5 &".format(h3.IP()))
-    #
-    # # generate traffic between h2 and h3 for 60 seconds every 5
-    # h2.cmd("iperf -c {} -t 60 -i 5 &".format(h3.IP()))
-
-    # start the thread that will cut the link between s1 and s2 after "delay" seconds of runtime
-    # t2 = threading.Thread(target=cut_link, args=(net, 10))
-    # t2.daemon = True
-    # t2.start()
-
-    # start the thread that will add a new host after "delay" seconds of runtime
-    # t = threading.Thread(target=add_late_hosts, args=(net, h1, 10))
-    # t.daemon = True
-    # t.start()
+    # stream a video from host 3 to host 5
+    h3.cmd("ffmpeg -re -stream_loop -1 -i input_video.mp4 -c copy -f mpegts udp://10.0.0.5:1234 &")
 
     CLI(net)
     net.stop()

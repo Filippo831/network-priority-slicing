@@ -15,16 +15,36 @@ Keywords:
 - QoS
 - Dynamic Network Traffic
 
-# todo
-## fixes
-- check if the forwarding logic is correct
-- understand if the packet takes the right route
+# Priority-Based SDN Controller
 
-## future implementation
-- simulate a break in one of the links using a thread in topology.py
-- when forwarding check if there is a channel that satisfies the priority requirements, if use another link (if the host priority value is too low, use the lowest priority value present in the links, if the priority value is too high, use the highest priority value present in the links)
+A Ryu-based OpenFlow 1.3 controller that implements **Priority-Based Slicing** and **Adaptive Path Discovery**. This application segregates network traffic into virtual slices and dynamically learns inter-switch routes.
 
-## run
+## Core Functionality
+
+### 1. Priority-Based Slicing
+Traffic is segregated by mapping Host IPs to specific **Priority Levels**. Switches are configured with a `router_links_priorities` map that dictates which physical ports belong to which slice. A host's traffic is primarily restricted to its designated priority ports, ensuring isolation.
+
+### 2. Static Host Mapping
+The controller maintains a hardcoded "Source of Truth" (`switch_hosts`) defining the exact location (Switch DPID and Port) of every host. Traffic from unknown hosts is ignored to maintain network integrity.
+
+### 3. Dynamic Path Learning
+While host locations are static, the paths between switches are learned on the fly:
+* When a packet arrives, the controller records the `in_port` as the return path to the source switch for that specific priority.
+* This populates `self.switch_priority_to_port`, allowing future traffic to bypass the discovery phase.
+
+### 4. Adaptive Discovery & Escalation
+If a route is unknown, the controller employs an **Escalation Logic**:
+1. **Slice Discovery:** It floods the packet only to ports within the host's assigned priority level.
+2. **Priority Escalation:** If no ports exist for that priority on a specific switch, it incrementally checks higher priority levels until a valid output port is found.
+3. **Fallback:** Defaults to a standard flood only if all priority-specific searches fail.
+
+### 5. Flow-Level Optimization
+Upon determining a path, the controller installs an **OFPFlowMod** in the switch hardware. Subsequent packets in that flow (e.g., video streams) are forwarded at line rate without controller intervention.
+
+
+
+
+## usage
 build the topology
 ```
 sudo python3 topology.py
@@ -32,5 +52,12 @@ sudo python3 topology.py
 
 start the controller
 ```
-ryu-manager --observe-links routing_controller.py
+ryu-manager controller.py monitor.py
 ```
+
+
+# todo
+## future implementations
+- create an issue in the video streaming link and change the priority to maintain the qos
+- 
+
