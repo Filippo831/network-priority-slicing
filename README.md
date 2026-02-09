@@ -45,6 +45,12 @@ Upon determining a path, the controller installs an **OFPFlowMod** in the switch
 
 
 ## usage
+
+download the video that is used as test
+```
+curl https://archive.org/download/Rick_Astley_Never_Gonna_Give_You_Up/Rick_Astley_Never_Gonna_Give_You_Up.mp4 > input_video.mp4
+```
+
 build the topology
 ```
 sudo python3 topology.py
