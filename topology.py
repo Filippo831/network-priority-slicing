@@ -21,10 +21,12 @@ def cut_link(net, delay=10):
     s1 = net.get("s1")
     s2 = net.get("s2")
     links = net.linksBetween(s1, s2)
-    if len(links) >= 2:
-        link_to_cut = links[0]
-        net.delLink(link_to_cut)
-        info("*** Link between s1 and s2 cut\n")
+    for l in links:
+        if "s1-eth1" in l.intf1.name or "s1-eth1" in l.intf2.name:
+            l.intf1.ifconfig("down")
+            l.intf2.ifconfig("down")
+            info("*** Link between s1 and s2 cut\n")
+            break
     else:
         info("*** Not enough links to cut between s1 and s2\n")
 
@@ -99,6 +101,10 @@ if __name__ == "__main__":
 
     # stream a video from host 3 to host 5
     h3.cmd("ffmpeg -re -stream_loop -1 -i input_video.mp4 -c copy -f mpegts udp://10.0.0.5:1234 &")
+
+    # automatically cut one of the links between s1 and s2 after 20 seconds
+    t = threading.Thread(target=cut_link, args=(net, 20))
+    t.start()
 
     CLI(net)
     net.stop()

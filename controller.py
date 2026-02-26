@@ -25,6 +25,8 @@ class SimpleRouting13(app_manager.RyuApp):
             "3": [[1], [2]]
         }
 
+        self.datapaths = {}
+
         self.routing = Routing(self.router_links_priorities)
 
         # Learned routing table: {dpid: {priority: {dest_sw_dpid: port}}}
@@ -68,6 +70,7 @@ class SimpleRouting13(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
         # table-miss
         self.add_flow(datapath, 0, match, actions)
+        self.datapaths[datapath.id] = datapath
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
         ofproto = datapath.ofproto
@@ -81,8 +84,6 @@ class SimpleRouting13(app_manager.RyuApp):
             mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
                                    match=match, instructions=inst)
         datapath.send_msg(mod)
-
-
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
@@ -198,10 +199,6 @@ class SimpleRouting13(app_manager.RyuApp):
                             if selected_priority is not None:
                                 known_port = self.switch_priority_to_port[dpid][selected_priority][dst_sw_dpid]
                                 actions = [parser.OFPActionOutput(known_port)]
-                        
-
-
-
 
         # ---------------------------
         # 3) Install flow + send PacketOut if actions were determined
@@ -212,4 +209,33 @@ class SimpleRouting13(app_manager.RyuApp):
             data = None if msg.buffer_id != ofproto.OFP_NO_BUFFER else msg.data
             send_packetout(actions, data)
 
+    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
+    def _port_status_handler(self, ev):
+        msg = ev.msg
+        reason = msg.reason
+        port_no = msg.desc.port_no
+        dpid = msg.datapath.id
+        ofproto = msg.datapath.ofproto
 
+        if reason == ofproto.OFPPR_DELETE or reason == ofproto.OFPPR_MODIFY:
+            # if port is down remove learned routes
+            link_down = (msg.desc.state & ofproto.OFPPS_LINK_DOWN) or (msg.desc.config & ofproto.OFPPC_PORT_DOWN)
+
+            if link_down:
+                self.logger.info("Port %s on Switch %s is down. Removing learned routes for this port", port_no, dpid)
+                if dpid in self.switch_priority_to_port:
+                    # find all priorities and destination switches that used this port and remove them
+                    for priority in self.switch_priority_to_port[dpid]:
+                        priorities_dict = self.switch_priority_to_port[dpid][priority]
+                        keys_to_remove = [dst_sw for dst_sw, port in priorities_dict.items() if port == port_no]
+
+                        for dst_sw in keys_to_remove:
+                            del self.switch_priority_to_port[dpid][priority][dst_sw]
+                self.remove_flows_for_port(dpid, port_no)
+
+    def remove_flows_for_port(self, dpid, port_no):
+        # remove all flows for the deleted ports to force rediscovery
+        parser = self.datapaths[dpid].ofproto_parser
+        ofproto = self.datapaths[dpid].ofproto
+        mod = parser.OFPFlowMod(datapath=self.datapaths[dpid], command=ofproto.OFPFC_DELETE, out_port=port_no, out_group=ofproto.OFPG_ANY, table_id=ofproto.OFPTT_ALL, match=parser.OFPMatch())
+        self.datapaths[dpid].send_msg(mod)
