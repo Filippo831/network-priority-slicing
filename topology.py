@@ -100,7 +100,7 @@ if __name__ == "__main__":
     h1, h2, h3, h4 = net.get('h1','h2','h3','h4')
 
     # stream a video from host 3 to host 5
-    h3.cmd("ffmpeg -re -stream_loop -1 -i input_video.mp4 -c copy -f mpegts udp://10.0.0.5:1234 &")
+    # h3.cmd("ffmpeg -re -stream_loop -1 -i input_video.mp4 -c copy -f mpegts udp://10.0.0.5:1234 &")
 
     # automatically cut one of the links between s1 and s2 after 20 seconds
     t = threading.Thread(target=cut_link, args=(net, 20))
