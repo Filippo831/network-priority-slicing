@@ -48,7 +48,7 @@ Upon determining a path, the controller installs an **OFPFlowMod** in the switch
 
 download the video that is used as test
 ```
-curl https://archive.org/download/Rick_Astley_Never_Gonna_Give_You_Up/Rick_Astley_Never_Gonna_Give_You_Up.mp4 > input_video.mp4
+wget https://archive.org/download/Rick_Astley_Never_Gonna_Give_You_Up/Rick_Astley_Never_Gonna_Give_You_Up.mp4 > input_video.mp4
 ```
 
 build the topology
@@ -58,12 +58,11 @@ sudo python3 topology.py
 
 start the controller
 ```
-ryu-manager controller.py monitor.py
+ryu-manager --observe-links controller.py
 ```
 
 
 # todo
 ## future implementations
-- create an issue in the video streaming link and change the priority to maintain the qos
-- 
+- demo with video streaming on the link that will be cut to show the routing change to a working link
 
