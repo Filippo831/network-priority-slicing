@@ -335,11 +335,11 @@ class SimpleRouting13(app_manager.RyuApp):
                     self.topo_graph.remove_edge(u, v, key=key)
                         
 
-                self.logger.info(
-                    "Port %s on Switch %s is down. Removing learned routes for this port",
-                    port_no,
-                    dpid,
-                )
+                # self.logger.info(
+                #     "Port %s on Switch %s is down. Removing learned routes for this port",
+                #     port_no,
+                #     dpid,
+                # )
                 if dpid in self.switch_priority_to_port:
                     # find all priorities and destination switches that used this port and remove them
                     for priority in self.switch_priority_to_port[dpid]:

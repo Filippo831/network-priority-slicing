@@ -49,7 +49,8 @@ class Routing:
                 if len(matching_ports) > 0:
                     actions.append(parser.OFPActionOutput(matching_ports[0]))
             except nx.NetworkXNoPath:
-                print(f"No path found from {dpid_str} to {dest_dpid} with priority {priority}")
+                pass
+                # print(f"No path found from {dpid_str} to {dest_dpid} with priority {priority}")
 
         return actions
 
