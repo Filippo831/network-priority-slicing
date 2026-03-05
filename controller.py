@@ -11,6 +11,7 @@ import pprint
 import sys
 import networkx as nx
 import copy
+import common
 
 try:
     from ryu.topology.event import EventLinkAdd, EventLinkDelete
@@ -379,3 +380,28 @@ class SimpleRouting13(app_manager.RyuApp):
 
             self.topo_graph.add_edge(src_dpid, dst_dpid, key=src_port, port=src_port, priority=pr)
 
+    @set_ev_cls(common.MonitorEvent)
+    def handle_monitor_event(self, ev):
+        (body, dpid) = ev.data
+        self.logger.info("received data\n")
+
+        # self.logger.info(f"\n[Switch {dpid:016x} Traffic Report]")
+        # self.logger.info(f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Total Packets':<12}")
+        # self.logger.info("-" * 55)
+        #
+        # ev = common.MonitorEvent(data=(body, dpid))
+        # self.send_event_to_observer(ev)
+        #
+        # for stat in sorted(body, key=lambda x: x.port_no):
+        #     if stat.port_no == 0xfffffffe: continue # Skip local port
+        #     
+        #     key = (dpid, stat.port_no)
+        #     prev_rx, prev_tx = self.port_stats_cache.get(key, (0, 0))
+        #     
+        #     # Calculate throughput: (Current - Previous) * 8 bits / 5 seconds / 10^6
+        #     rx_speed = (stat.rx_bytes - prev_rx) * 8 / 5 / 10**6
+        #     tx_speed = (stat.tx_bytes - prev_tx) * 8 / 5 / 10**6
+        #     
+        #     self.port_stats_cache[key] = (stat.rx_bytes, stat.tx_bytes)
+        #
+        #     self.logger.info(f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12}")

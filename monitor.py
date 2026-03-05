@@ -5,6 +5,7 @@ from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib import hub
 from ryu.lib.packet import packet, ethernet
+import common
 
 class NetworkTrafficMonitor(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -39,20 +40,24 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
         body = ev.msg.body
         dpid = ev.msg.datapath.id
         
-        print(f"\n[Switch {dpid:016x} Traffic Report]")
-        print(f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Total Packets':<12}")
-        print("-" * 55)
+        event = common.MonitorEvent(data=(body, dpid))
+        print("sent event")
+        self.send_event_to_observers(event)
 
-        for stat in sorted(body, key=lambda x: x.port_no):
-            if stat.port_no == 0xfffffffe: continue # Skip local port
-            
-            key = (dpid, stat.port_no)
-            prev_rx, prev_tx = self.port_stats_cache.get(key, (0, 0))
-            
-            # Calculate throughput: (Current - Previous) * 8 bits / 5 seconds / 10^6
-            rx_speed = (stat.rx_bytes - prev_rx) * 8 / 5 / 10**6
-            tx_speed = (stat.tx_bytes - prev_tx) * 8 / 5 / 10**6
-            
-            self.port_stats_cache[key] = (stat.rx_bytes, stat.tx_bytes)
-
-            print(f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12}")
+        # print(f"\n[Switch {dpid:016x} Traffic Report]")
+        # print(f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Total Packets':<12}")
+        # print("-" * 55)
+        #
+        # for stat in sorted(body, key=lambda x: x.port_no):
+        #     if stat.port_no == 0xfffffffe: continue # Skip local port
+        #     
+        #     key = (dpid, stat.port_no)
+        #     prev_rx, prev_tx = self.port_stats_cache.get(key, (0, 0))
+        #     
+        #     # Calculate throughput: (Current - Previous) * 8 bits / 5 seconds / 10^6
+        #     rx_speed = (stat.rx_bytes - prev_rx) * 8 / 5 / 10**6
+        #     tx_speed = (stat.tx_bytes - prev_tx) * 8 / 5 / 10**6
+        #     
+        #     self.port_stats_cache[key] = (stat.rx_bytes, stat.tx_bytes)
+        #
+        #     print(f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12}")
