@@ -41,6 +41,12 @@ If a route is unknown, the controller employs an **Escalation Logic**:
 ### 5. Flow-Level Optimization
 Upon determining a path, the controller installs an **OFPFlowMod** in the switch hardware. Subsequent packets in that flow (e.g., video streams) are forwarded at line rate without controller intervention.
 
+### 6. Preemption Mechanism
+To guarantee Service Level Agreements (SLAs) for Premium traffic (Priority 0), the system implements a closed-loop Quality of Service (QoS) monitoring and preemption mechanism:
+1. **Hard Preemption:** If priority-0-traffic exceeds a critical bandwidth threshold (e.g., during a video bitrate spike), the controller intervenes. Rather than modifying OpenFlow routing paths, it directly manipulates the underlying Open vSwitch hardware queues (HTB) using Linux Traffic Control (tc).
+2. **Resource Re-allocation:**  Bandwidth is dynamically "stolen" from the Best Effort slice (Priority 1) and reassigned to the Video slice. This expands the physical capacity of the high-priority link on the fly, preventing packet loss and preserving service fluidity.
+3. **Elastic Rollback:** Once the traffic spike subsides and bandwidth usage drops below a safe threshold, the controller automatically restores the original queue limits, returning all network slices to their baseline physical configuration.
+
 
 
 
@@ -51,16 +57,15 @@ download the video that is used as test
 wget https://archive.org/download/Rick_Astley_Never_Gonna_Give_You_Up/Rick_Astley_Never_Gonna_Give_You_Up.mp4 > input_video.mp4
 ```
 
+start the controller
+```
+ryu-manager --observe-links controller.py monitor.py
+```
+
 build the topology
 ```
 sudo python3 topology.py
 ```
-
-start the controller
-```
-ryu-manager --observe-links controller.py
-```
-
 
 # todo
 ## future implementations
