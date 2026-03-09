@@ -100,7 +100,11 @@ if __name__ == "__main__":
     h1, h2, h3, h4 = net.get('h1','h2','h3','h4')
 
     # stream a video from host 3 to host 5
-    # h3.cmd("ffmpeg -re -stream_loop -1 -i input_video.mp4 -c copy -f mpegts udp://10.0.0.5:1234 &")
+    h3.cmd("ffmpeg -re -stream_loop -1 -i input_video.mp4 -c copy -f mpegts udp://10.0.0.5:1234 > ffmpeg_h3_log.txt 2>&1 &")    
+    # h5.cmd('ffplay -nodisp -i udp://@:1234 &')
+    # h5.cmd('ffmpeg -v info -i "udp://10.0.0.5:1234?fifo_size=0&overrun_nonfatal=1" -f null - &')
+
+    # h1.cmd('ffmpeg -re -i input_video.mp4 -c:v copy -f mpegts "udp://10.0.0.5:1234?pkt_size=1316" &')
 
     # automatically cut one of the links between s1 and s2 after 20 seconds
     t = threading.Thread(target=cut_link, args=(net, 20))

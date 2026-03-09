@@ -262,7 +262,23 @@ class SimpleRouting13(app_manager.RyuApp):
                     # if actions is empty, it means this switch has no ports in the source host's priority slice.
                     # If so, check if the src priority is lower than the lowest priority that reaches the destination switch, if so get the
                     # lowest priority available. If not get the next lower priority that reaches the destination switch
+
                     if not actions:
+                        for p_backup in range(len(self.router_links_priorities[str(dpid)])):
+                            if p_backup == src_priority:
+                                continue
+                            actions = self.routing.get_slice_discovery_actions(
+                                dpid,
+                                p_backup,
+                                in_port,
+                                parser,
+                                dest_dpid=dst_sw_dpid,
+                                nx_graph=self.topo_graph
+                            )
+                            if actions:
+                                self.logger.info("No path on priority %s. Backup path found on priority %s", src_priority, p_backup)
+                                break
+                                
                         available_priorities = sorted(
                             [
                                 p
