@@ -136,8 +136,8 @@ if __name__ == "__main__":
     # t.start()
 
     # Simulation of traffic patterns and congestion scenarios
-    t = threading.Thread(target=demo_orchestrator, args=(net,))
-    t.start()
+    # t = threading.Thread(target=demo_orchestrator, args=(net,))
+    # t.start()
 
     CLI(net)
     net.stop()
