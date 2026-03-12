@@ -131,13 +131,14 @@ if __name__ == "__main__":
     # this should send the video received from h5 to the host machine
     # h5.cmd("socat UDP4-RECV:1234,fork UDP4-SEND:10.0.2.2:7777 &")
 
-    # automatically cut one of the links between s1 and s2 after 20 seconds
-    # t = threading.Thread(target=cut_link, args=(net, 20))
-    # t.start()
 
     # Simulation of traffic patterns and congestion scenarios
-    # t = threading.Thread(target=demo_orchestrator, args=(net,))
-    # t.start()
+    t2 = threading.Thread(target=demo_orchestrator, args=(net,))
+    t2.start()
+
+    # automatically cut one of the links between s1 and s2 after 20 seconds
+    t1 = threading.Thread(target=cut_link, args=(net, 20))
+    t1.start()
 
     CLI(net)
     net.stop()

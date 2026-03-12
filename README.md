@@ -1,47 +1,28 @@
-# panettone-imbibito
+# Network priority slicing
 
-Networking 2 University of Trento project.
+## table of contents
+- [Overview](#overview)
+- [Features](#features)
+- [Getting started](#getting-started)
+- [Test case](#test-case)
 
-# Project: Network Slice Setup Optimization
 
-- GOAL: to enable RYU SDN controller to slice the network and then to dynamically re-allocate services in order to maintain desired QoS.
-- Example 1: migrate a server to maximize throughput via northbound script.
-- Example 2: migrate a server to minimize delay via northbound script.
-- Suggestion: include environmental changes via script (e.g. after 30 sec. A link goes down or new traffic is introduced in the network).
+## overview
+A Ryu-based OpenFlow 1.3 controller that implements **Priority-Based Slicing**, **Adaptive Path Discovery** and **QoS management**. 
 
-Keywords:
-- Network Slicing
-- RYU SDN Controller
-- QoS
-- Dynamic Network Traffic
 
-# Priority-Based SDN Controller
-
-A Ryu-based OpenFlow 1.3 controller that implements **Priority-Based Slicing** and **Adaptive Path Discovery**. This application segregates network traffic into virtual slices and dynamically learns inter-switch routes.
-
-## Core Functionality
+## Features
 
 ### 1. Priority-Based Slicing
-Traffic is segregated by mapping Host IPs to specific **Priority Levels**. Switches are configured with a `router_links_priorities` map that dictates which physical ports belong to which slice. A host's traffic is primarily restricted to its designated priority ports, ensuring isolation.
+Every host and every port interconnecting the switches has a priority level that defines the flow of the packet depending on the priority level. The priorities is defined in the *\_\_init\_\_()* function inside [controller.py](https://github.com/Filippo831/network-priority-slicing/blob/main/controller.py). The packets will have the same priority level as the priority of the host sending that packet and they can travel only on links with the same priority or lower. If the priority doesn't match the closest lower priority is chosen, otherwise if the host priority is lower than all the links, the link with the lowest priority will be chosen.
 
-### 2. Static Host Mapping
-The controller maintains a hardcoded "Source of Truth" (`switch_hosts`) defining the exact location (Switch DPID and Port) of every host. Traffic from unknown hosts is ignored to maintain network integrity.
+### 2. Dynamic Path Learning
+Using the python library [netowrkx](https://networkx.org/en/) a graph of the topology is kept including the priority level of the links to use graph functions to find the shortest path to the destination. Furthermore a custom routing table (*switch_priority_to_port*) is maintained to map each switch and priority level to the corresponding output port. This allows for efficient packet forwarding based on the priority constraints.
 
-### 3. Dynamic Path Learning
-While host locations are static, the paths between switches are learned on the fly:
-* When a packet arrives, the controller records the `in_port` as the return path to the source switch for that specific priority.
-* This populates `self.switch_priority_to_port`, allowing future traffic to bypass the discovery phase.
+### 3. Failure handling
+Upon link failure, the controller detects the event and updates the topology graph accordingly. It then recalculates optimal paths for affected flows, ensuring that traffic is rerouted through available links while respecting priority constraints. This dynamic adaptation minimizes disruption and maintains service continuity even in the face of network issues.
 
-### 4. Adaptive Discovery & Escalation
-If a route is unknown, the controller employs an **Escalation Logic**:
-1. **Slice Discovery:** It floods the packet only to ports within the host's assigned priority level.
-2. **Priority Escalation:** If no ports exist for that priority on a specific switch, it incrementally checks higher priority levels until a valid output port is found.
-3. **Fallback:** Defaults to a standard flood only if all priority-specific searches fail.
-
-### 5. Flow-Level Optimization
-Upon determining a path, the controller installs an **OFPFlowMod** in the switch hardware. Subsequent packets in that flow (e.g., video streams) are forwarded at line rate without controller intervention.
-
-### 6. Preemption Mechanism
+### 4. Preemption Mechanism
 To guarantee Service Level Agreements (SLAs) for Premium traffic (Priority 0), the system implements a closed-loop Quality of Service (QoS) monitoring and preemption mechanism:
 1. **Hard Preemption:** If priority-0-traffic exceeds a critical bandwidth threshold (e.g., during a video bitrate spike), the controller intervenes. Rather than modifying OpenFlow routing paths, it directly manipulates the underlying Open vSwitch hardware queues (HTB) using Linux Traffic Control (tc).
 2. **Resource Re-allocation:**  Bandwidth is dynamically "stolen" from the Best Effort slice (Priority 1) and reassigned to the Video slice. This expands the physical capacity of the high-priority link on the fly, preventing packet loss and preserving service fluidity.
@@ -50,24 +31,61 @@ To guarantee Service Level Agreements (SLAs) for Premium traffic (Priority 0), t
 
 
 
-## usage
-
-download the video that is used as test
+## Getting started
+##### Clone the repository
 ```
-wget https://archive.org/download/Rick_Astley_Never_Gonna_Give_You_Up/Rick_Astley_Never_Gonna_Give_You_Up.mp4 > input_video.mp4
+git clone https://github.com/Filippo831/network-priority-slicing.git
+cd network-priority-slicing
+```
+##### Download requirements
+```
+pip install networkx 
 ```
 
-start the controller
+<!-- ##### Download the video that is used as test and rename it -->
+<!-- ``` -->
+<!-- wget https://archive.org/download/Rick_Astley_Never_Gonna_Give_You_Up/Rick_Astley_Never_Gonna_Give_You_Up.mp4 -->
+<!-- mv Rick_Astley_Never_Gonna_Give_You_Up.mp4 input_video.mp4 -->
+<!-- ``` -->
+
+##### Start the controller
 ```
 ryu-manager --observe-links controller.py monitor.py
 ```
 
-build the topology
+##### Build the topology
 ```
 sudo python3 topology.py
 ```
 
-# todo
-## future implementations
-- demo with video streaming on the link that will be cut to show the routing change to a working link
+## Test case
+![Network design](./assets/network_design.md)
 
+#### setup 
+###### Hosts
+| Priority | Hosts |
+| --- | --- |
+| 0 | h1, h3, h5 |
+| 1 | h2, h4, h6 |
+
+###### Links
+| Priority | Links |
+| --- | --- |
+| 0 | s1-eth1<->s2-eth1; s1-eth3<->s3-eth1|
+| 1 | s1-eth2<->s2-eth2; s1-eth4<->s3-eth2|
+
+#### scenario
+###### start
+- h2 -> h4: 8Mbps priority 1
+- h1 -> h3: 5Mbps priority 0
+###### after 15s
+- h1 -> h3: 15Mbps 
+###### after 20s
+- cut link s1-eth1<->s2-eth1
+###### after 35s
+- h1 -> h3: close connection
+
+#### system response
+- After 15 seconds, when the bitrate of the video stream from h1 to h3 exceeds the critical threshold, the controller detects the increase in bandwidth usage and dynamically reallocates bandwidth from the Best Effort slice (Priority 1) to the Video slice (Priority 0). This ensures that the high-priority traffic continues to flow smoothly without packet loss, even during the spike in demand.
+- After 20 seconds, when the link between s1 and s2 fails, the controller detects the failure and updates the topology graph accordingly. In this case the priority 0 traffic that were supposed to flow through the failed link will be rerouted through the link with the closer lower priority the link with priority 1.
+- After 35 seconds, when the connection from h1 to h3 is closed, the controller detects the change in traffic patterns and restores the original bandwidth allocation for the Best Effort slice (Priority 1), ensuring that all network slices return to their baseline physical configuration.
