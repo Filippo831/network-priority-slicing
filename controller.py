@@ -3,12 +3,12 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
-from ryu.lib.packet import packet
-from ryu.lib.packet import ipv4
+from ryu.lib.packet import ipv4, arp, packet, ethernet
 
 from flow_manager import FlowManager
 from qos import QoS
 from graph import Graph
+from config import Config
 
 import networkx as nx
 import subprocess
@@ -20,18 +20,11 @@ except Exception:
     EventLinkDelete = None
 
 
-class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph):
+class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
         super(SimpleRouting13, self).__init__(*args, **kwargs)
-
-        # router_links_priorities format: { "dpid_str": [ [priority0_ports], [priority1_ports], ... ] }
-        self.router_links_priorities = {
-            "1": [[1, 3], [2, 4]],
-            "2": [[1], [2]],
-            "3": [[1], [2]],
-        }
 
         self.datapaths = {}
 
@@ -65,30 +58,6 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph):
         self.mac_to_port_unknown = {}
 
         # Static mapping of hosts to (switch_dpid, port)
-        self.switch_hosts = {
-            "10.0.0.1": (1, 5),
-            "10.0.0.2": (1, 6),
-            "10.0.0.3": (2, 3),
-            "10.0.0.4": (2, 4),
-            "10.0.0.5": (3, 3),
-            "10.0.0.6": (3, 4),
-        }
-
-        # Host IP list
-        self.hosts_list = [
-            "10.0.0.1",
-            "10.0.0.2",
-            "10.0.0.3",
-            "10.0.0.4",
-            "10.0.0.5",
-            "10.0.0.6",
-        ]
-
-        # Priority groups for hosts (index corresponds to priority level, lower index = higher priority)
-        self.hosts_priorities_vector = [
-            ["10.0.0.1", "10.0.0.3", "10.0.0.5"],
-            ["10.0.0.2", "10.0.0.4", "10.0.0.6"],
-        ]
 
         # Inverse mapping: {host_ip: priority_index}
         self.hosts_priorities_set = {}
@@ -122,7 +91,20 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph):
 
         # Parse Packet & Validate IPv4
         pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocols(ethernet.ethernet)[0]
+        
+        # Avoid learning from LLDP (neighboring switches)
+        if eth.ethertype == 0x88cc: 
+            return
+
         ip_pkt = pkt.get_protocol(ipv4.ipv4)
+        arp_pkt = pkt.get_protocol(arp.arp)
+
+        if ip_pkt:
+            self._update_host_location(ip_pkt.src, dpid, in_port)
+        elif arp_pkt:
+            self._update_host_location(arp_pkt.src, dpid, in_port)
+
         if not ip_pkt:
             return
 

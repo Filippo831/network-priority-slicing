@@ -1,5 +1,6 @@
 import networkx as nx
 from ryu.lib.packet import ether_types
+import pprint
 
 
 class Graph:
@@ -149,3 +150,14 @@ class Graph:
             data=data,
         )
         datapath.send_msg(out)
+
+
+    '''
+    Dynamically update the hosts list and their connection to the switches
+    '''
+    def _update_host_location(self, ip, dpid, port):
+        if ip not in self.switch_hosts:
+            self.switch_hosts[ip] = (dpid, port)
+            if ip not in self.hosts_list:
+                self.hosts_list.append(ip)
+            pprint.pprint(self.switch_hosts)
