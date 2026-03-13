@@ -3,14 +3,15 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
-from ryu.lib.packet import packet
-from ryu.lib.packet import ethernet
-from ryu.lib.packet import ether_types
-from ryu.lib.packet import ipv4
-import pprint
-import sys
+from ryu.lib.packet import ipv4, arp, packet, ethernet
+
+from flow_manager import FlowManager
+from qos import QoS
+from graph import Graph
+from config import Config
+
 import networkx as nx
-import copy
+import subprocess
 
 try:
     from ryu.topology.event import EventLinkAdd, EventLinkDelete
@@ -18,76 +19,53 @@ except Exception:
     EventLinkAdd = None
     EventLinkDelete = None
 
-from routing_utilities import Routing
 
-
-class SimpleRouting13(app_manager.RyuApp):
+class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
         super(SimpleRouting13, self).__init__(*args, **kwargs)
 
-        # router_links_priorities format: { "dpid_str": [ [priority0_ports], [priority1_ports], ... ] }
-        self.router_links_priorities = {
-            "1": [[1, 3], [2, 4]],
-            "2": [[1], [2]],
-            "3": [[1], [2]],
-        }
-
         self.datapaths = {}
 
-        self.routing = Routing(self.router_links_priorities)
-
-        '''
+        """
         Topology graph: a NetworkX MultiDiGraph. For each link there is a couple of links monodirectional.:
         STRUCTURE
             - Nodes: switch dpids as strings (e.g., "1", "2", "3")
             - Edges: directed edges representing links between switches, with attributes:
                 - port: the port number on the source switch that connects to the destination switch
                 - priority: the priority index of the link based on router_links_priorities (or None if not defined)
-        '''
+        """
         self.topo_graph = nx.MultiDiGraph()
         # add all known switches as nodes
         for dpid_str in self.router_links_priorities.keys():
             self.topo_graph.add_node(str(dpid_str))
 
-        # Learned routing table: {dpid: {priority: {dest_sw_dpid: port}}}
+        """ 
+        Learned routing table: {dpid: {priority: {dest_sw_dpid: port}}}
+
+        USAGE
+            - dpid: the current switch dpid
+            - priority: the priority index of the traffic
+            - dst_sw_dpid: the destination switch dpid for which we want to find the output port
+
+            forward_port = self.switch_priority_to_port[dpid][priority][dst_sw_dpid]
+
+        """
         self.switch_priority_to_port = {}
 
         # Unknown / non-priority traffic learning: {dpid: {dst_ip: port}}
         self.mac_to_port_unknown = {}
 
         # Static mapping of hosts to (switch_dpid, port)
-        self.switch_hosts = {
-            "10.0.0.1": (1, 5),
-            "10.0.0.2": (1, 6),
-            "10.0.0.3": (2, 3),
-            "10.0.0.4": (2, 4),
-            "10.0.0.5": (3, 3),
-            "10.0.0.6": (3, 4),
-        }
-
-        # Host IP list
-        self.hosts_list = [
-            "10.0.0.1",
-            "10.0.0.2",
-            "10.0.0.3",
-            "10.0.0.4",
-            "10.0.0.5",
-            "10.0.0.6",
-        ]
-
-        # Priority groups (index = priority level)
-        self.hosts_priorities_vector = [
-            ["10.0.0.1", "10.0.0.3", "10.0.0.5"],
-            ["10.0.0.2", "10.0.0.4", "10.0.0.6"],
-        ]
 
         # Inverse mapping: {host_ip: priority_index}
         self.hosts_priorities_set = {}
         for index, priority_array in enumerate(self.hosts_priorities_vector):
             for ip in priority_array:
                 self.hosts_priorities_set[ip] = index
+
+        self.is_preempted = False  # flag to indicate if a preemption event has occurred
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -102,137 +80,86 @@ class SimpleRouting13(app_manager.RyuApp):
         self.add_flow(datapath, 0, match, actions)
         self.datapaths[datapath.id] = datapath
 
-    def add_flow(self, datapath, priority, match, actions, buffer_id=None):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
-
-        if buffer_id:
-            mod = parser.OFPFlowMod(
-                datapath=datapath,
-                priority=priority,
-                match=match,
-                instructions=inst,
-                buffer_id=buffer_id,
-            )
-        else:
-            mod = parser.OFPFlowMod(
-                datapath=datapath, priority=priority, match=match, instructions=inst
-            )
-        datapath.send_msg(mod)
-
-    def find_priority(self, dpid, port_no):
-        """Return the priority index for a given switch dpid and port number, or None."""
-        priorities = self.router_links_priorities.get(str(dpid), [])
-        for idx, ports in enumerate(priorities):
-            if port_no in ports:
-                return idx
-        return None
-
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         msg = ev.msg
         datapath = msg.datapath
-        parser = datapath.ofproto_parser
         ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
         in_port = msg.match.get("in_port")
         dpid = datapath.id
 
-        # Inline helpers scoped to this method (small lambdas kept local)
-        install_flow = lambda match, actions, buf_id=msg.buffer_id: self.add_flow(
-            datapath,
-            1,
-            match,
-            actions,
-            buf_id if buf_id != ofproto.OFP_NO_BUFFER else None,
-        )
-        send_packetout = (
-            lambda actions, data=None, buf_id=msg.buffer_id: datapath.send_msg(
-                parser.OFPPacketOut(
-                    datapath=datapath,
-                    buffer_id=buf_id,
-                    in_port=in_port,
-                    actions=actions,
-                    data=data,
-                )
-            )
-        )
-
-        # Parse packet
+        # Parse Packet & Validate IPv4
         pkt = packet.Packet(msg.data)
-        eth = pkt.get_protocols(ethernet.ethernet)[
-            0
-        ]  # we keep eth in case extension needed later
-        ip_pkt = pkt.get_protocol(ipv4.ipv4)
-        if not ip_pkt:
-            # we only handle IPv4 packets in this controller
+        eth = pkt.get_protocols(ethernet.ethernet)[0]
+        
+        # Avoid learning from LLDP (neighboring switches)
+        if eth.ethertype == 0x88cc: 
             return
-        src_ip = ip_pkt.src
-        dst_ip = ip_pkt.dst
 
-        # WARNING: Dynamic learning of hosts disabled for static topology
-        # learn where the hosts are placed
-        # if src_ip not in self.switch_hosts:
-        #     self.logger.info("Learning host %s on Switch %s, Port %s", src_ip, dpid, in_port)
-        #     self.switch_hosts[src_ip] = (dpid, in_port)
-        #
-        #     # Optional: Also add to hosts_list if you use it for filtering
-        #     if src_ip not in self.hosts_list:
-        #         self.hosts_list.append(src_ip)
+        ip_pkt = pkt.get_protocol(ipv4.ipv4)
+        arp_pkt = pkt.get_protocol(arp.arp)
 
-        # add unknown hosts to hosts_list
+        if ip_pkt:
+            self._update_host_location(ip_pkt.src, dpid, in_port)
+        elif arp_pkt:
+            self._update_host_location(arp_pkt.src, dpid, in_port)
+
+        if not ip_pkt:
+            return
+
+        src_ip, dst_ip = ip_pkt.src, ip_pkt.dst
+
+        # Host Discovery/Filtering
         if src_ip not in self.hosts_list:
             self.hosts_list.append(src_ip)
 
         if dst_ip not in self.hosts_list:
-            # unknown destination host: ignore packet
             return
 
-        # ---------------------------
-        # 2) Sliced / Priority traffic
-        # ---------------------------
-        # Retrieve priority of source; default to None (should exist for known hosts)
-
+        """
+        Priority Determination:
+        - First, we check if the source IP is in our predefined priority sets. If it is, we use that priority index.
+        - If it's not in the predefined sets, we assign it the lowest priority
+        """
         src_priority = self.hosts_priorities_set.get(src_ip)
-
-        # if source host not found in priorities set, add it with lowest priority
         if src_priority is None:
-            self.hosts_priorities_set[src_ip] = len(self.hosts_priorities_vector) - 1
-            src_priority = self.hosts_priorities_set[src_ip]
+            src_priority = len(self.hosts_priorities_vector) - 1
+            self.hosts_priorities_set[src_ip] = src_priority
 
-        # If destination host is unknown to static topology: slice-specific discovery
+        # Determine Routing Actions
+        actions = []
+
+        """
+        Routing Logic:
+        1. If the destination IP is not known (not in switch_hosts), we treat 
+            it as unknown traffic and use discovery actions to find the path using
+            the topology graph
+
+        2. If the destination IP is known, we check if it's directly connected 
+            to the current switch. If it is, we output to the corresponding port.
+
+        3. If the destination is known but not directly connected, we use the 
+            inter-switch routing logic to find the appropriate output port based on 
+            the learned routing table or the graph .
+        """
         if dst_ip not in self.switch_hosts:
-            # Unknown route: do slice-specific discovery (send to slice ports except in_port)
-            actions = self.routing.get_slice_discovery_actions(
-                dpid,
-                src_priority,
-                in_port,
-                parser,
-                dest_dpid=dst_sw_dpid,
-                nx_graph=self.topo_graph
-            )
-
+            actions = self._get_discovery_actions(dpid, src_priority, in_port, parser)
         else:
-            # Both hosts are known in topology: get their switch/port attachments
             dst_sw_dpid, dst_out_port = self.switch_hosts[dst_ip]
             src_sw_dpid, _ = self.switch_hosts[src_ip]
 
-            # Learn which port leads to the source switch for this priority (if not on same switch)
+            # Learn reverse path so that we can reply back to the source without using the discovery action
             if src_sw_dpid != dpid:
                 self.switch_priority_to_port.setdefault(dpid, {}).setdefault(
                     src_priority, {}
-                )
-                self.switch_priority_to_port[dpid][src_priority][src_sw_dpid] = in_port
+                )[src_sw_dpid] = in_port
 
-            # If destination is on the same switch: deliver locally
             if dst_sw_dpid == dpid:
                 actions = [parser.OFPActionOutput(dst_out_port)]
             else:
-                # Check if we have a learned port to reach dst switch for this priority
-                known_port = (
-                    self.switch_priority_to_port.get(dpid, {})
-                    .get(src_priority, {})
-                    .get(dst_sw_dpid)
+                actions = self._get_inter_switch_actions(
+                    msg, dpid, src_priority, dst_sw_dpid, src_ip, dst_ip, in_port
                 )
 
                 if known_port:
@@ -308,24 +235,11 @@ class SimpleRouting13(app_manager.RyuApp):
         # 3) Install flow + send PacketOut if actions were determined
         # ---------------------------
         if actions:
-            # decrement ttl of a packet to avoid loops in case of discovery
+            # Prepend TTL decrement for all outgoing traffic
             actions = [parser.OFPActionDecNwTtl()] + actions
-            data = None if msg.buffer_id != ofproto.OFP_NO_BUFFER else msg.data
-            send_packetout(actions, data)
+            self._send_packet_out(datapath, msg, in_port, actions)
 
-    def remove_flows_for_port(self, dpid, port_no):
-        # remove all flows for the deleted ports to force rediscovery
-        parser = self.datapaths[dpid].ofproto_parser
-        ofproto = self.datapaths[dpid].ofproto
-        mod = parser.OFPFlowMod(
-            datapath=self.datapaths[dpid],
-            command=ofproto.OFPFC_DELETE,
-            out_port=port_no,
-            out_group=ofproto.OFPG_ANY,
-            table_id=ofproto.OFPTT_ALL,
-            match=parser.OFPMatch(),
-        )
-        self.datapaths[dpid].send_msg(mod)
+
 
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
     def _port_status_handler(self, ev):
@@ -335,54 +249,44 @@ class SimpleRouting13(app_manager.RyuApp):
         dpid = msg.datapath.id
         ofproto = msg.datapath.ofproto
 
-        if reason == ofproto.OFPPR_DELETE or reason == ofproto.OFPPR_MODIFY:
-            # if port is down remove learned routes
-            link_down = (msg.desc.state & ofproto.OFPPS_LINK_DOWN) or (
-                msg.desc.config & ofproto.OFPPC_PORT_DOWN
-            )
+        if reason not in [ofproto.OFPPR_DELETE, ofproto.OFPPR_MODIFY]:
+            return
 
-            if link_down:
-                # remove the edges connected to this port from the topology graph
-                edges_to_remove = []
-                for u, v, key, attr in self.topo_graph.edges(data=True, keys=True):
-                    if attr.get("port") == port_no and u == str(dpid):
-                        edges_to_remove.append((u, v, key))
-                for u, v, key in edges_to_remove:
-                    self.topo_graph.remove_edge(u, v, key=key)
-                        
+        # Determine if the port is down based on the reason and port status
+        link_down = (msg.desc.state & ofproto.OFPPS_LINK_DOWN) or (
+            msg.desc.config & ofproto.OFPPC_PORT_DOWN
+        )
 
-                # self.logger.info(
-                #     "Port %s on Switch %s is down. Removing learned routes for this port",
-                #     port_no,
-                #     dpid,
-                # )
-                if dpid in self.switch_priority_to_port:
-                    # find all priorities and destination switches that used this port and remove them
-                    for priority in self.switch_priority_to_port[dpid]:
-                        priorities_dict = self.switch_priority_to_port[dpid][priority]
-                        keys_to_remove = [
-                            dst_sw
-                            for dst_sw, port in priorities_dict.items()
-                            if port == port_no
-                        ]
+        if not link_down:
+            return
 
-                        for dst_sw in keys_to_remove:
-                            del self.switch_priority_to_port[dpid][priority][dst_sw]
-                self.remove_flows_for_port(dpid, port_no)
+        # get all the edges corresponding to the port that went down and remove them from the graph
+        edges_to_remove = [
+            (u, v, key)
+            for u, v, key, attr in self.topo_graph.edges(data=True, keys=True)
+            if attr.get("port") == port_no and u == str(dpid)
+        ]
+        for u, v, key in edges_to_remove:
+            self.topo_graph.remove_edge(u, v, key=key)
+
+        self._clear_switch_priorities(dpid, port_no)
+
+        # 5. Final flow removal
+        self.remove_flows_for_port(dpid, port_no)
 
     # Topology events: update topology graph when Ryu reports link changes
     if EventLinkAdd is not None:
-        '''
-        Note: This event handler relies on the Ryu topology API to report link additions. 
-        If you run the Ryu app with the '--observe-links' flag, it will automatically 
+        """
+        Note: This event handler relies on the Ryu topology API to report link additions.
+        If you run the Ryu app with the '--observe-links' flag, it will automatically
         populate the topology graph with links as they are discovered.
         The links are mono directional (from src to dst) and the port number is taken from the src of the link.
-        So for each connection there should be two edges in the graph, one in each direction, 
+        So for each connection there should be two edges in the graph, one in each direction,
         with the corresponding port numbers for each switch.
-        '''
+        """
+
         @set_ev_cls(EventLinkAdd, MAIN_DISPATCHER)
         def _event_link_add(self, ev):
-
             l = ev.link
             src = l.src
             dst = l.dst
@@ -393,5 +297,6 @@ class SimpleRouting13(app_manager.RyuApp):
             src_port = getattr(src, "port_no", None)
             pr = self.find_priority(src_dpid, src_port)
 
-            self.topo_graph.add_edge(src_dpid, dst_dpid, key=src_port, port=src_port, priority=pr)
-
+            self.topo_graph.add_edge(
+                src_dpid, dst_dpid, key=src_port, port=src_port, priority=pr
+            )
