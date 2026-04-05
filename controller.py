@@ -11,7 +11,7 @@ from graph import Graph
 from config import Config
 
 import networkx as nx
-import subprocess
+import os
 
 try:
     from ryu.topology.event import EventLinkAdd, EventLinkDelete
@@ -25,6 +25,8 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
 
     def __init__(self, *args, **kwargs):
         super(SimpleRouting13, self).__init__(*args, **kwargs)
+
+        self.is_test = os.environ.get("RYU_TEST", "").lower() == "true"
 
         self.datapaths = {}
 
@@ -56,8 +58,6 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
 
         # Unknown / non-priority traffic learning: {dpid: {dst_ip: port}}
         self.mac_to_port_unknown = {}
-
-        # Static mapping of hosts to (switch_dpid, port)
 
         # Inverse mapping: {host_ip: priority_index}
         self.hosts_priorities_set = {}
@@ -92,9 +92,9 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
         # Parse Packet & Validate IPv4
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
-        
+
         # Avoid learning from LLDP (neighboring switches)
-        if eth.ethertype == 0x88cc: 
+        if eth.ethertype == 0x88CC:
             return
 
         ip_pkt = pkt.get_protocol(ipv4.ipv4)
@@ -155,6 +155,13 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
                     src_priority, {}
                 )[src_sw_dpid] = in_port
 
+                # if test write self.switch_priority_to_port to tests_output/switch_priority_to_port.json
+                if self.is_test:
+                    import json
+
+                    with open("tests_output/switch_priority_to_port.json", "w") as f:
+                        json.dump(self.switch_priority_to_port, f, indent=2)
+
             if dst_sw_dpid == dpid:
                 actions = [parser.OFPActionOutput(dst_out_port)]
             else:
@@ -166,8 +173,6 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
             # Prepend TTL decrement for all outgoing traffic
             actions = [parser.OFPActionDecNwTtl()] + actions
             self._send_packet_out(datapath, msg, in_port, actions)
-
-
 
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
     def _port_status_handler(self, ev):
@@ -196,6 +201,13 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
         ]
         for u, v, key in edges_to_remove:
             self.topo_graph.remove_edge(u, v, key=key)
+            # if test write self.topo_graph to tests_output/topo_graph.json
+            if self.is_test:
+                import json
+                from networkx.readwrite import json_graph
+
+                with open("tests_output/topo_graph.json", "w") as f:
+                    json.dump(json_graph.node_link_data(self.topo_graph), f, indent=2)
 
         self._clear_switch_priorities(dpid, port_no)
 
@@ -228,3 +240,10 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
             self.topo_graph.add_edge(
                 src_dpid, dst_dpid, key=src_port, port=src_port, priority=pr
             )
+            # if test write self.topo_graph to tests_output/topo_graph.json
+            if self.is_test:
+                import json
+                from networkx.readwrite import json_graph
+
+                with open("tests_output/topo_graph.json", "w") as f:
+                    json.dump(json_graph.node_link_data(self.topo_graph), f, indent=2)
