@@ -1,0 +1,6 @@
+DONE
+
+NOT DONE
+[ ] Find a way to pass the configuration to the testing script
+[ ] Make the first scenario work
+[ ] Make second scenario work

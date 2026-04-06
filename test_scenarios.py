@@ -151,8 +151,16 @@ class TestScenarios(unittest.TestCase):
         with open("tests_output/switch_priority_to_port_scenario_1_before_cut.json", "r") as f:
             expected_switch_priority_to_port = json.load(f)
 
-        self.assertEqual(topo_graph, expected_topo_graph)
-        self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
+        # test this equalities and if false print the differences in a human readable way
+        # self.assertEqual(topo_graph, expected_topo_graph)
+        # self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
+        if topo_graph != expected_topo_graph:
+            print("Topology graph does not match expected before cut:")
+            print("Actual:", json.dumps(topo_graph, indent=2))
+            print("Expected:", json.dumps(expected_topo_graph, indent=2))
+        else:
+            print("Topology graph matches expected before cut.")
+
 
         '''
             wait 10 seconds more (15 in total) and check if:

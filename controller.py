@@ -28,6 +28,9 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
 
         self.is_test = os.environ.get("RYU_TEST", "").lower() == "true"
 
+        self.config_path = os.environ.get("CONFIG_PATH", "config.json")
+        Config.__init__(self, config_path=self.config_path)
+
         self.datapaths = {}
 
         """
