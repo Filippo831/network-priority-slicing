@@ -160,4 +160,4 @@ class Graph:
             self.switch_hosts[ip] = (dpid, port)
             if ip not in self.hosts_list:
                 self.hosts_list.append(ip)
-            pprint.pprint(self.switch_hosts)
+            # pprint.pprint(self.switch_hosts)

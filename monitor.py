@@ -47,14 +47,14 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
                 "[Monitor] Warning: Routing application not found. Skipping preemption logic."
             )
             return
-
-        print(f"\n[Switch {dpid:016x} Traffic Report]")
-        # print(f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Total Packets':<12}")
-        # print("-" * 55)
-        print(
-            f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Tot. Packets':<12} | {'Cost':<12} | {'State QoS':<12}"
-        )
-        print("-" * 77)
+        #
+        # print(f"\n[Switch {dpid:016x} Traffic Report]")
+        # # print(f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Total Packets':<12}")
+        # # print("-" * 55)
+        # print(
+        #     f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Tot. Packets':<12} | {'Cost':<12} | {'State QoS':<12}"
+        # )
+        # print("-" * 77)
 
         tx_speeds = {}
 
@@ -82,9 +82,9 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
             state = "PREEMPTED" if routing_app.is_preempted else "NORMAL"
 
             # print(f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12}")
-            print(
-                f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12} | {cost:<12.2f} | {state:<12}"
-            )
+            # print(
+            #     f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12} | {cost:<12.2f} | {state:<12}"
+            # )
 
         # Preemption logic for switch 1 (s1)
         if dpid == 1:
