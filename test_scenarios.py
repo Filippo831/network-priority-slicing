@@ -88,12 +88,27 @@ def restore_link_test_1(net, delay=20):
 
 # class for scenarios testing
 class TestScenarios(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
+    def setUp(self):
+        self.ryu_process = None
         my_env = os.environ.copy()
         my_env["RYU_TEST"] = "true"
+        my_env["CONFIG_PATH"] = "./configurations/test_1.json.json"
         # run the ryu controller
-        cls.ryu_process = subprocess.Popen(["ryu-manager", "--observe-links", "controller.py", "monitor.py"], env=my_env)
+        self.ryu_process = subprocess.Popen(["ryu-manager", "--observe-links", "controller.py", "monitor.py"], env=my_env)
+
+    def start_ryu_controller(self, config_file):
+        my_env = os.environ.copy()
+        my_env["RYU_TEST"] = "true"
+        my_env["CONFIG_PATH"] = config_file
+        self.ryu_process = subprocess.Popen(["ryu-manager", "--observe-links", "controller.py", "monitor.py"], env=my_env)
+        print("Waiting for Ryu controller to start...")
+        time.sleep(10) # wait for the controller to start and load the config
+        print("Ryu controller started with config:", config_file)
+
+    def tearDown(self):
+        if self.ryu_process:
+            self.ryu_process.terminate()
+            self.ryu_process.wait()
 
     def test_scenario_1(self):
         '''
@@ -112,6 +127,7 @@ class TestScenarios(unittest.TestCase):
             @scenario:
             - upper link is cut after 10 seconds, then restored after 20 seconds
         '''
+        self.start_ryu_controller(config_file="./configurations/test_1.json")
 
         topo = TopologyTest1()
         net = Mininet(
@@ -186,11 +202,6 @@ class TestScenarios(unittest.TestCase):
         net.stop()
 
 
-    @classmethod
-    def tearDownClass(cls):
-        if cls.ryu_process:
-            cls.ryu_process.terminate()
-            cls.ryu_process.wait()
 
 
     def test_scenario_2(self):
