@@ -125,7 +125,6 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
         - First, we check if the source IP is in our predefined priority sets. If it is, we use that priority index.
         - If it's not in the predefined sets, we assign it the lowest priority
         """
-        pprint.pprint(self.hosts_priorities_set)
         src_priority = self.hosts_priorities_set.get(src_ip)
         if src_priority is None:
             src_priority = len(self.hosts_priorities_vector) - 1

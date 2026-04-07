@@ -5,6 +5,7 @@ from mininet.node import OVSKernelSwitch, RemoteController
 from mininet.cli import CLI
 from mininet.link import TCLink
 from mininet.log import info, setLogLevel
+from mininet.util import dumpNodeConnections
 import threading, time
 import subprocess
 import json
@@ -60,6 +61,7 @@ class TopologyTest1(Topo):
         self.addLink("h3", "s2", **host_link_config)
         self.addLink("h4", "s2", **host_link_config)
 
+
 def cut_link_test_1(net, delay=10):
     time.sleep(delay)
     s1 = net.get("s1")
@@ -72,6 +74,8 @@ def cut_link_test_1(net, delay=10):
             break
     else:
         pass
+    print("Link between s1 and s2 cut")
+
 
 def restore_link_test_1(net, delay=20):
     time.sleep(delay)
@@ -85,24 +89,69 @@ def restore_link_test_1(net, delay=20):
             break
     else:
         pass
+    print("Link between s1 and s2 restored")
+
+# def print_active_topology(net):
+#     print("\n--- Current Network State ---")
+#     # Combine hosts and switches into one list to iterate
+#     for node in net.hosts + net.switches:
+#         links_output = []
+#
+#         for intf in node.intfList():
+#             # Check if there is a link attached to this interface
+#             link = intf.link
+#             if link:
+#                 # Identify the 'other' end of the virtual cable
+#                 other_intf = link.intf2 if link.intf1 == intf else link.intf1
+#
+#                 # Check the administrative status of the interface
+#                 # .isUp() returns True if the interface is 'up'
+#                 status = "UP" if intf.isUp() else "DOWN"
+#
+#                 links_output.append(f"{intf.name}<->{other_intf.name} [{status}]")
+#
+#         # Print the node and all its connection statuses
+#         print(f"{node.name}: {' | '.join(links_output) if links_output else 'No Links'}")
+#     print("-----------------------------\n")
+
+def normalize_topo_graph(graph):
+    normalized_links = []
+    for link in graph["links"]:
+        src = link["source"]
+        dst = link["target"]
+        port = link["port"]
+        priority = link["priority"]
+        # create a normalized representation of the link that is independent of the order of nodes and links
+        normalized_link = {
+            "nodes": sorted([src, dst]),
+            "port": port,
+            "priority": priority,
+        }
+        normalized_links.append(normalized_link)
+    # sort the list of links to make it independent of the order of links
+    normalized_links.sort(key=lambda x: (x["nodes"], x["port"], x["priority"]))
+    return normalized_links
 
 # class for scenarios testing
 class TestScenarios(unittest.TestCase):
+
     def setUp(self):
         self.ryu_process = None
-        my_env = os.environ.copy()
-        my_env["RYU_TEST"] = "true"
-        my_env["CONFIG_PATH"] = "./configurations/test_1.json.json"
-        # run the ryu controller
-        self.ryu_process = subprocess.Popen(["ryu-manager", "--observe-links", "controller.py", "monitor.py"], env=my_env)
 
     def start_ryu_controller(self, config_file):
+        if self.ryu_process:
+            self.ryu_process.terminate()
+            self.ryu_process.wait()
+
         my_env = os.environ.copy()
         my_env["RYU_TEST"] = "true"
         my_env["CONFIG_PATH"] = config_file
-        self.ryu_process = subprocess.Popen(["ryu-manager", "--observe-links", "controller.py", "monitor.py"], env=my_env)
+        self.ryu_process = subprocess.Popen(
+            ["ryu-manager", "--observe-links", "controller.py", "monitor.py"],
+            env=my_env,
+        )
         print("Waiting for Ryu controller to start...")
-        time.sleep(10) # wait for the controller to start and load the config
+        time.sleep(10)  # wait for the controller to start and load the config
         print("Ryu controller started with config:", config_file)
 
     def tearDown(self):
@@ -111,22 +160,22 @@ class TestScenarios(unittest.TestCase):
             self.ryu_process.wait()
 
     def test_scenario_1(self):
-        '''
-            FIRST SCENARIO
-            @topology:
-            h1 --- s1 --- s2 --- h3
-                   |  ---  |
-                   h2      h4
+        """
+        FIRST SCENARIO
+        @topology:
+        h1 --- s1 --- s2 --- h3
+               |  ---  |
+               h2      h4
 
-            @priorities:
-            - h1, h3: priority 0
-            - h2, h4: priority 1
-            - s1-s2 upper link: priority 0 (video)
-            - s1-s2 lower link: priority 1 (HTTP)
+        @priorities:
+        - h1, h3: priority 0
+        - h2, h4: priority 1
+        - s1-s2 upper link: priority 0 (video)
+        - s1-s2 lower link: priority 1 (HTTP)
 
-            @scenario:
-            - upper link is cut after 10 seconds, then restored after 20 seconds
-        '''
+        @scenario:
+        - upper link is cut after 10 seconds, then restored after 20 seconds
+        """
         self.start_ryu_controller(config_file="./configurations/test_1.json")
 
         topo = TopologyTest1()
@@ -140,72 +189,85 @@ class TestScenarios(unittest.TestCase):
             link=TCLink,
         )
         net.build()
-        net.start()
 
-        # random traffic to learn paths
-        for h in net.hosts:
-            h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
+        try:
+            net.start()
+            t1 = threading.Thread(target=cut_link_test_1, args=(net, 10))
+            t1.start()
+            t2 = threading.Thread(target=restore_link_test_1, args=(net, 25))
+            t2.start()
 
-        t1 = threading.Thread(target=cut_link_test_1, args=(net, 10))
-        t1.start()
-        t2 = threading.Thread(target=restore_link_test_1, args=(net, 20))
-        t2.start()
+            time.sleep(2)
 
-        '''
-            wait 5 seconds and check if:
-            - tests_output/topo_graph.json is equals to tests_output/topo_graph_scenario_1_before_cut.json
-            - tests_output/switch_priority_to_port.json is equals to tests_output/switch_priority_to_port_scenario_1_before_cut.json
-        '''
-        time.sleep(5)
-        print("Checking topology and routing before link cut...")
-        with open("tests_output/topo_graph.json", "r") as f:
-            topo_graph = json.load(f)
-        with open("tests_output/topo_graph_scenario_1_before_cut.json", "r") as f:
-            expected_topo_graph = json.load(f)
-        with open("tests_output/switch_priority_to_port.json", "r") as f:
-            switch_priority_to_port = json.load(f)
-        with open("tests_output/switch_priority_to_port_scenario_1_before_cut.json", "r") as f:
-            expected_switch_priority_to_port = json.load(f)
+            # random traffic to learn paths
+            for h in net.hosts:
+                h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
 
-        # test this equalities and if false print the differences in a human readable way
-        # self.assertEqual(topo_graph, expected_topo_graph)
-        # self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
-        if topo_graph != expected_topo_graph:
-            print("Topology graph does not match expected before cut:")
-            print("Actual:", json.dumps(topo_graph, indent=2))
-            print("Expected:", json.dumps(expected_topo_graph, indent=2))
-        else:
-            print("Topology graph matches expected before cut.")
+            """
+                wait 3 seconds (5 in total) and check if:
+                - tests_output/topo_graph.json is equals to tests_output/topo_graph_scenario_1_before_cut.json
+                - tests_output/switch_priority_to_port.json is equals to tests_output/switch_priority_to_port_scenario_1_before_cut.json
+            """
+            time.sleep(3)
+            print("Checking topology and routing before link cut...")
+            with open("tests_output/topo_graph.json", "r") as f:
+                topo_graph = json.load(f)
+            with open("tests_output/topo_graph_scenario_1_before_cut.json", "r") as f:
+                expected_topo_graph = json.load(f)
+            with open("tests_output/switch_priority_to_port.json", "r") as f:
+                switch_priority_to_port = json.load(f)
+            with open(
+                "tests_output/switch_priority_to_port_scenario_1_before_cut.json", "r"
+            ) as f:
+                expected_switch_priority_to_port = json.load(f)
 
+            print("Checked topology and routing before link cut")
 
-        '''
-            wait 10 seconds more (15 in total) and check if:
-            - tests_output/topo_graph.json is equals to tests_output/topo_graph_scenario_1_after_cut.json
-            - tests_output/switch_priority_to_port.json is equals to tests_output/switch_priority_to_port_scenario_1_after_cut.json
-        '''
-        time.sleep(10)
-        print("Checking topology and routing after link cut...")
-        with open("tests_output/topo_graph.json", "r") as f:
-            topo_graph = json.load(f)
-        with open("tests_output/topo_graph_scenario_1_after_cut.json", "r") as f:
-            expected_topo_graph = json.load(f)
-        with open("tests_output/switch_priority_to_port.json", "r") as f:
-            switch_priority_to_port = json.load(f)
-        with open("tests_output/switch_priority_to_port_scenario_1_after_cut.json", "r") as f:
-            expected_switch_priority_to_port = json.load(f)
+            # test this equalities and if false print the differences in a human readable way
+            self.assertEqual(
+                normalize_topo_graph(topo_graph), normalize_topo_graph(expected_topo_graph)
+            )
 
-        self.assertEqual(topo_graph, expected_topo_graph)
-        self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
+            self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
 
-        time.sleep(10)
+            """
+                wait 7 seconds more (12 in total) and check if:
+                - tests_output/topo_graph.json is equals to tests_output/topo_graph_scenario_1_after_cut.json
+                - tests_output/switch_priority_to_port.json is equals to tests_output/switch_priority_to_port_scenario_1_after_cut.json
+            """
+            time.sleep(7)
 
-        net.stop()
+            for h in net.hosts:
+                h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
 
+            print("Checking topology and routing after link cut...")
 
+            with open("tests_output/topo_graph.json", "r") as f:
+                topo_graph = json.load(f)
+            with open("tests_output/topo_graph_scenario_1_after_cut.json", "r") as f:
+                expected_topo_graph = json.load(f)
+            with open("tests_output/switch_priority_to_port.json", "r") as f:
+                switch_priority_to_port = json.load(f)
+            with open(
+                "tests_output/switch_priority_to_port_scenario_1_after_cut.json", "r"
+            ) as f:
+                expected_switch_priority_to_port = json.load(f)
 
+            self.assertEqual(
+                normalize_topo_graph(topo_graph), normalize_topo_graph(expected_topo_graph)
+            )
+            self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
+
+            print("checked topology and routing after link cut")
+
+            time.sleep(10)
+
+        finally:
+            t1.join()
+            t2.join()
+            net.stop()
 
     def test_scenario_2(self):
         # Simulate a scenario where h3 is streaming video to h4
         # and h1 is sending HTTP traffic to h2
         pass
-

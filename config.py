@@ -32,6 +32,3 @@ class Config:
         # Priority groups for hosts (index corresponds to priority level, lower index = higher priority)
         self.hosts_priorities_vector = []
         self.load_config(path=self.config_path)
-
-        print(f"Router Links Priorities: {self.router_links_priorities}")
-        print(f"Hosts Priorities Vector: {self.switch_hosts}")
