@@ -185,6 +185,8 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
         dpid = msg.datapath.id
         ofproto = msg.datapath.ofproto
 
+
+
         if reason not in [ofproto.OFPPR_DELETE, ofproto.OFPPR_MODIFY]:
             return
 
@@ -194,6 +196,13 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
         )
 
         if not link_down:
+            self.switch_priority_to_port.clear()
+            if self.is_test:
+                import json
+
+                with open("tests_output/switch_priority_to_port.json", "w") as f:
+                    json.dump(self.switch_priority_to_port, f, indent=2)
+
             return
 
         # get all the edges corresponding to the port that went down and remove them from the graph

@@ -63,7 +63,7 @@ class TopologyTest1(Topo):
 
 
 def cut_link_test_1(net, delay=10):
-    time.sleep(delay)
+    # time.sleep(delay)
     s1 = net.get("s1")
     s2 = net.get("s2")
     links = net.linksBetween(s1, s2)
@@ -78,7 +78,7 @@ def cut_link_test_1(net, delay=10):
 
 
 def restore_link_test_1(net, delay=20):
-    time.sleep(delay)
+    # time.sleep(delay)
     s1 = net.get("s1")
     s2 = net.get("s2")
     links = net.linksBetween(s1, s2)
@@ -91,28 +91,6 @@ def restore_link_test_1(net, delay=20):
         pass
     print("Link between s1 and s2 restored")
 
-# def print_active_topology(net):
-#     print("\n--- Current Network State ---")
-#     # Combine hosts and switches into one list to iterate
-#     for node in net.hosts + net.switches:
-#         links_output = []
-#
-#         for intf in node.intfList():
-#             # Check if there is a link attached to this interface
-#             link = intf.link
-#             if link:
-#                 # Identify the 'other' end of the virtual cable
-#                 other_intf = link.intf2 if link.intf1 == intf else link.intf1
-#
-#                 # Check the administrative status of the interface
-#                 # .isUp() returns True if the interface is 'up'
-#                 status = "UP" if intf.isUp() else "DOWN"
-#
-#                 links_output.append(f"{intf.name}<->{other_intf.name} [{status}]")
-#
-#         # Print the node and all its connection statuses
-#         print(f"{node.name}: {' | '.join(links_output) if links_output else 'No Links'}")
-#     print("-----------------------------\n")
 
 def normalize_topo_graph(graph):
     normalized_links = []
@@ -151,7 +129,7 @@ class TestScenarios(unittest.TestCase):
             env=my_env,
         )
         print("Waiting for Ryu controller to start...")
-        time.sleep(10)  # wait for the controller to start and load the config
+        time.sleep(5)  # wait for the controller to start and load the config
         print("Ryu controller started with config:", config_file)
 
     def tearDown(self):
@@ -192,23 +170,24 @@ class TestScenarios(unittest.TestCase):
 
         try:
             net.start()
-            t1 = threading.Thread(target=cut_link_test_1, args=(net, 10))
-            t1.start()
-            t2 = threading.Thread(target=restore_link_test_1, args=(net, 25))
-            t2.start()
+            # t1 = threading.Thread(target=cut_link_test_1, args=(net, 10))
+            # t1.start()
+            # t2 = threading.Thread(target=restore_link_test_1, args=(net, 25))
+            # t2.start()
 
-            time.sleep(2)
+            time.sleep(4)
 
             # random traffic to learn paths
-            for h in net.hosts:
-                h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
+            for i in range(5):
+                for h in net.hosts:
+                    h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
 
             """
-                wait 3 seconds (5 in total) and check if:
+                check if:
                 - tests_output/topo_graph.json is equals to tests_output/topo_graph_scenario_1_before_cut.json
                 - tests_output/switch_priority_to_port.json is equals to tests_output/switch_priority_to_port_scenario_1_before_cut.json
             """
-            time.sleep(3)
+            time.sleep(4)
             print("Checking topology and routing before link cut...")
             with open("tests_output/topo_graph.json", "r") as f:
                 topo_graph = json.load(f)
@@ -221,7 +200,6 @@ class TestScenarios(unittest.TestCase):
             ) as f:
                 expected_switch_priority_to_port = json.load(f)
 
-            print("Checked topology and routing before link cut")
 
             # test this equalities and if false print the differences in a human readable way
             self.assertEqual(
@@ -230,15 +208,21 @@ class TestScenarios(unittest.TestCase):
 
             self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
 
+            print("Checked topology and routing before link cut")
+
+            cut_link_test_1(net)
+            time.sleep(4)
+            for i in range(5):
+                for h in net.hosts:
+                    h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
+            time.sleep(4)
+
             """
-                wait 7 seconds more (12 in total) and check if:
+                after the link cut check if:
                 - tests_output/topo_graph.json is equals to tests_output/topo_graph_scenario_1_after_cut.json
                 - tests_output/switch_priority_to_port.json is equals to tests_output/switch_priority_to_port_scenario_1_after_cut.json
             """
-            time.sleep(7)
 
-            for h in net.hosts:
-                h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
 
             print("Checking topology and routing after link cut...")
 
@@ -260,11 +244,37 @@ class TestScenarios(unittest.TestCase):
 
             print("checked topology and routing after link cut")
 
-            time.sleep(10)
+            restore_link_test_1(net)
+            time.sleep(4)
+            for i in range(5):
+                for h in net.hosts:
+                    h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
+            time.sleep(4)
+
+            print("Checking topology and routing after link restore...")
+            with open("tests_output/topo_graph.json", "r") as f:
+                topo_graph = json.load(f)
+            with open("tests_output/topo_graph_scenario_1_before_cut.json", "r") as f:
+                expected_topo_graph = json.load(f)
+            with open("tests_output/switch_priority_to_port.json", "r") as f:
+                switch_priority_to_port = json.load(f)
+            with open(
+                "tests_output/switch_priority_to_port_scenario_1_before_cut.json", "r"
+            ) as f:
+                expected_switch_priority_to_port = json.load(f)
+
+
+            # test this equalities and if false print the differences in a human readable way
+            self.assertEqual(
+                normalize_topo_graph(topo_graph), normalize_topo_graph(expected_topo_graph)
+            )
+
+            self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
+            print("checked topology and routing after link restore")
 
         finally:
-            t1.join()
-            t2.join()
+            # t1.join()
+            # t2.join()
             net.stop()
 
     def test_scenario_2(self):
