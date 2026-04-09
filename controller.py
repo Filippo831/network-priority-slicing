@@ -33,6 +33,9 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
 
         self.datapaths = {}
 
+        # keep track of links that went down
+        self.link_down = set()
+
         """
         Topology graph: a NetworkX MultiDiGraph. For each link there is a couple of links monodirectional.:
         STRUCTURE
@@ -196,7 +199,9 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
         )
 
         if not link_down:
-            self.switch_priority_to_port.clear()
+            if (dpid, port_no) in self.link_down:
+                self.link_down.remove((dpid, port_no))
+                self.switch_priority_to_port.clear()
             if self.is_test:
                 import json
 
@@ -205,6 +210,7 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
 
             return
 
+        self.link_down.add((dpid, port_no))
         # get all the edges corresponding to the port that went down and remove them from the graph
         edges_to_remove = [
             (u, v, key)

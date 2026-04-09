@@ -62,7 +62,7 @@ class TopologyTest1(Topo):
         self.addLink("h4", "s2", **host_link_config)
 
 
-def cut_link_test_1(net, delay=10):
+def cut_link_test_1(net):
     # time.sleep(delay)
     s1 = net.get("s1")
     s2 = net.get("s2")
@@ -77,8 +77,7 @@ def cut_link_test_1(net, delay=10):
     print("Link between s1 and s2 cut")
 
 
-def restore_link_test_1(net, delay=20):
-    # time.sleep(delay)
+def restore_link_test_1(net):
     s1 = net.get("s1")
     s2 = net.get("s2")
     links = net.linksBetween(s1, s2)
@@ -347,7 +346,6 @@ class TestScenarios(unittest.TestCase):
         - s1-s3 lower link: priority 1 (HTTP)
 
         @scenario:
-        - T = 10s: upper link between s1 and s2 is cut
         - T = 15s: h1->h3 traffic goes up to 15Mbps
         - T = 30s: upper link between s1 and s3 is restored
         - T = 35s: h1->h3 traffic close connection
@@ -369,12 +367,61 @@ class TestScenarios(unittest.TestCase):
             net.start()
             time.sleep(4)
 
-            # random traffic to learn paths
+            # random traffic to learn paths sending a ping from each host to each other host
             for i in range(5):
                 for h in net.hosts:
-                    h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
-            time.sleep(4)
-            self.assertTrue(0 == 0)
+                    for j in range(1, 7):
+                    # h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 6 + 1))
+                        if h.name != "h%d" % j:
+                            h.cmd("ping -c 1 10.0.0.%d &" % j)
+            time.sleep(10)
+
+            # check topology and routing at init state
+            print("Checking topology and routing at the beginning...")
+            with open("tests_output/topo_graph.json", "r") as f:
+                topo_graph = json.load(f)
+            with open("tests_output/test_2/init_topo_graph.json", "r") as f:
+                expected_topo_graph = json.load(f)
+            with open("tests_output/switch_priority_to_port.json", "r") as f:
+                switch_priority_to_port = json.load(f)
+            with open(
+                "tests_output/test_2/init_switch_priority_to_port.json", "r"
+            ) as f:
+                expected_switch_priority_to_port = json.load(f)
+
+            self.assertEqual(
+                normalize_topo_graph(topo_graph),
+                normalize_topo_graph(expected_topo_graph),
+            )
+            self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
+            print("Checked topology and routing at the beginning")
+
+            # increase traffic from h1 to h3 to 15Mbps
+            print("Increasing traffic from h1 to h3 to 15Mbps...")
+            h1 = net.get("h1")
+            h3 = net.get("h3")
+            h1.cmd("iperf -c %s -u -b 15M -t 10 &" % h3.IP())
+            time.sleep(10)
+
+            # check if the port s1-eth1 had increased the bandwidth to 15Mbps and s1-eth2 had decreased to 5Mbps
+            print("Checking bandwidth settings after traffic increase...")
+            s1 = net.get("s1")
+            s1_eth1_bw = s1.cmd("tc qdisc show dev s1-eth1")
+            s1_eth2_bw = s1.cmd("tc qdisc show dev s1-eth2")
+            print("s1-eth1 bandwidth settings:", s1_eth1_bw)
+            print("s1-eth2 bandwidth settings:", s1_eth2_bw)
+            self.assertIn("rate 15Mbit", s1_eth1_bw)
+            self.assertIn("rate 5Mbit", s1_eth2_bw)
+            print("Checked bandwidth settings after traffic increase")
+
+            time.sleep(10)
+            # check if the bandwidth went back to normal after traffic decrease (10Mbps for both ports)
+            print("Checking bandwidth settings after traffic decrease...")
+            s1_eth1_bw = s1.cmd("tc qdisc show dev s1-eth1")
+            s1_eth2_bw = s1.cmd("tc qdisc show dev s1-eth2")
+            self.assertIn("rate 10Mbit", s1_eth1_bw)
+            self.assertIn("rate 10Mbit", s1_eth2_bw)
+            print("Checked bandwidth settings after traffic decrease")
         
         finally:
             net.stop()
