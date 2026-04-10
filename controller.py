@@ -33,9 +33,6 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
 
         self.datapaths = {}
 
-        # keep track of links that went down
-        self.link_down = set()
-
         """
         Topology graph: a NetworkX MultiDiGraph. For each link there is a couple of links monodirectional.:
         STRUCTURE
@@ -157,9 +154,27 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
 
             # Learn reverse path so that we can reply back to the source without using the discovery action
             if src_sw_dpid != dpid:
+                # copy the state of self.switch_priority_to_port for future comparison
+                old_switch_priority_to_port = {
+                    dpid: {
+                        priority: ports.copy() for priority, ports in priorities.items()
+                    } for dpid, priorities in self.switch_priority_to_port.items()
+                }
+
                 self.switch_priority_to_port.setdefault(dpid, {}).setdefault(
                     src_priority, {}
                 )[src_sw_dpid] = in_port
+                
+                # print only the differences in the switch_priority_to_port before and after the update
+                new_ports = self.switch_priority_to_port[dpid][src_priority]
+                old_ports = old_switch_priority_to_port.get(dpid, {}).get(src_priority, {})
+                for dst_sw, port in new_ports.items():
+                    old_port = old_ports.get(dst_sw)
+                    if old_port != port:
+                        print(f"Updated switch_priority_to_port for switch {dpid}, priority {src_priority}, destination switch {dst_sw}: {old_port} -> {port}")
+
+
+
 
                 # if test write self.switch_priority_to_port to tests_output/switch_priority_to_port.json
                 if self.is_test:
@@ -198,19 +213,17 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
             msg.desc.config & ofproto.OFPPC_PORT_DOWN
         )
 
+
+        if self.is_test:
+            import json
+            self.switch_priority_to_port.clear()
+
+            with open("tests_output/switch_priority_to_port.json", "w") as f:
+                json.dump(self.switch_priority_to_port, f, indent=2)
+
         if not link_down:
-            if (dpid, port_no) in self.link_down:
-                self.link_down.remove((dpid, port_no))
-                self.switch_priority_to_port.clear()
-            if self.is_test:
-                import json
-
-                with open("tests_output/switch_priority_to_port.json", "w") as f:
-                    json.dump(self.switch_priority_to_port, f, indent=2)
-
             return
 
-        self.link_down.add((dpid, port_no))
         # get all the edges corresponding to the port that went down and remove them from the graph
         edges_to_remove = [
             (u, v, key)

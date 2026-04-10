@@ -296,7 +296,10 @@ class TestScenarios(unittest.TestCase):
             # random traffic to learn paths
             for i in range(5):
                 for h in net.hosts:
-                    h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
+                    for j in range(1, 5):
+                    # h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 6 + 1))
+                        if h.name != "h%d" % j:
+                            h.cmd("ping -c 1 10.0.0.%d &" % j)
 
             """
                 check if:
@@ -330,7 +333,10 @@ class TestScenarios(unittest.TestCase):
             time.sleep(4)
             for i in range(5):
                 for h in net.hosts:
-                    h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
+                    for j in range(1, 5):
+                    # h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 6 + 1))
+                        if h.name != "h%d" % j:
+                            h.cmd("ping -c 1 10.0.0.%d &" % j)
             time.sleep(4)
 
             """
@@ -364,7 +370,10 @@ class TestScenarios(unittest.TestCase):
             time.sleep(4)
             for i in range(5):
                 for h in net.hosts:
-                    h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 4 + 1))
+                    for j in range(1, 5):
+                    # h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 6 + 1))
+                        if h.name != "h%d" % j:
+                            h.cmd("ping -c 1 10.0.0.%d &" % j)
             time.sleep(4)
 
             print("Checking topology and routing after link restore...")
@@ -569,7 +578,7 @@ class TestScenarios(unittest.TestCase):
             # random traffic to learn paths sending a ping from each host to each other host
             for i in range(3):
                 for h in net.hosts:
-                    for j in range(1, 3):
+                    for j in range(1, 4):
                         if h.name != "h%d" % j:
                             h.cmd("ping -c 1 10.0.0.%d &" % j)
 
@@ -603,14 +612,25 @@ class TestScenarios(unittest.TestCase):
             
             time.sleep(3)
             cut_link_test_3(net)
+            time.sleep(3)
+
+            # print the value inside switch_priority_to_port.json
+            with open("tests_output/switch_priority_to_port.json", "r") as f:
+                switch_priority_to_port = json.load(f)
+            print("switch_priority_to_port after link cut:", switch_priority_to_port)
+
             # random traffic to learn paths sending a ping from each host to each other host
             for i in range(3):
                 for h in net.hosts:
-                    for j in range(1, 3):
+                    for j in range(1, 4):
                         if h.name != "h%d" % j:
                             h.cmd("ping -c 1 10.0.0.%d &" % j)
 
             time.sleep(4)
+            print("Checking connectivity between all hosts after link cut...")
+            pingall_result = net.pingAll()
+            self.assertEqual(pingall_result, 0)
+            print("Checked connectivity between all hosts after link cut")
             # check the topology and routing after the link cut
             print("Checking topology and routing after link cut...")
             with open("tests_output/topo_graph.json", "r") as f:
@@ -632,10 +652,6 @@ class TestScenarios(unittest.TestCase):
             print("Checked topology and routing after link cut")
 
             # test connectivity between hosts after link cut
-            print("Checking connectivity between all hosts after link cut...")
-            pingall_result = net.pingAll()
-            self.assertEqual(pingall_result, 0)
-            print("Checked connectivity between all hosts after link cut")
 
         finally:
             net.stop()
