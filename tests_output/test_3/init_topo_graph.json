@@ -15,11 +15,25 @@
   ],
   "links": [
     {
+      "port": 1,
+      "priority": 0,
+      "source": "1",
+      "target": "2",
+      "key": 1
+    },
+    {
       "port": 2,
       "priority": 1,
       "source": "1",
       "target": "3",
       "key": 2
+    },
+    {
+      "port": 1,
+      "priority": 0,
+      "source": "2",
+      "target": "1",
+      "key": 1
     },
     {
       "port": 2,

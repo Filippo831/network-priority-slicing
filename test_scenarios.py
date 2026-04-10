@@ -1,15 +1,15 @@
+import json
+import os
+import subprocess
+import time
 import unittest
-from mininet.topo import Topo
-from mininet.net import Mininet
-from mininet.node import OVSKernelSwitch, RemoteController
+
 from mininet.cli import CLI
 from mininet.link import TCLink
 from mininet.log import info, setLogLevel
-from mininet.util import dumpNodeConnections
-import threading, time
-import subprocess
-import json
-import os
+from mininet.net import Mininet
+from mininet.node import OVSKernelSwitch, RemoteController
+from mininet.topo import Topo
 
 
 class TopologyTest1(Topo):
@@ -74,7 +74,7 @@ def cut_link_test_1(net):
             break
     else:
         pass
-    print("Link between s1 and s2 cut")
+    print("Link between s1-eth1 and s2-eth1 cut")
 
 
 def restore_link_test_1(net):
@@ -145,6 +145,71 @@ class TopologyTest2(Topo):
         self.addLink("h5", "s3", **host_link_config)
         self.addLink("h6", "s3", **host_link_config)
 
+def cut_link_test_2(net):
+    # time.sleep(delay)
+    s1 = net.get("s1")
+    s3 = net.get("s3")
+    links = net.linksBetween(s1, s3)
+    for l in links:
+        if "s1-eth3" in l.intf1.name or "s1-eth3" in l.intf2.name:
+            l.intf1.ifconfig("down")
+            l.intf2.ifconfig("down")
+            break
+    else:
+        pass
+    print("Link between s1-eth3 and s3-eth1 cut")
+
+class TopologyTest3(Topo):
+    def __init__(self):
+        Topo.__init__(self)
+
+        hconfig = {"inNamespace": True}
+
+        # low latency, low bandwidth channel
+        http_link_config = {
+            "bw": 10,
+            "delay": "5ms",
+            "max_queue_size": 1000,
+            "use_htb": True,
+        }
+        host_link_config = {
+            "bw": 20,
+            "delay": "1ms",
+            "max_queue_size": 1000,
+            "use_htb": True,
+        }  # Host links are faster to avoid bottlenecks at the edge of the network
+
+        # Create switch nodes
+        for i in range(3):
+            sconfig = {"dpid": "%016x" % (i + 1)}
+            self.addSwitch("s%d" % (i + 1), **sconfig)
+
+        # Create host nodes
+        self.addHost("h1", ip="10.0.0.1", mac="00:00:00:00:00:01")
+        self.addHost("h2", ip="10.0.0.2", mac="00:00:00:00:00:02")
+        self.addHost("h3", ip="10.0.0.3", mac="00:00:00:00:00:03")
+
+        self.addLink("s1", "s2", **http_link_config)
+        self.addLink("s2", "s3", **http_link_config)
+        self.addLink("s1", "s3", **http_link_config)
+
+        self.addLink("h1", "s1", **host_link_config)
+        self.addLink("h2", "s2", **host_link_config)
+        self.addLink("h3", "s3", **host_link_config)
+
+def cut_link_test_3(net):
+    # time.sleep(delay)
+    s1 = net.get("s1")
+    s2 = net.get("s2")
+    links = net.linksBetween(s1, s2)
+    for l in links:
+        if "s1-eth1" in l.intf1.name or "s1-eth1" in l.intf2.name:
+            l.intf1.ifconfig("down")
+            l.intf2.ifconfig("down")
+            break
+    else:
+        pass
+    print("Link between s1-eth1 and s2-eth1 cut")
 
 def normalize_topo_graph(graph):
     normalized_links = []
@@ -346,8 +411,8 @@ class TestScenarios(unittest.TestCase):
         - s1-s3 lower link: priority 1 (HTTP)
 
         @scenario:
-        - T = 15s: h1->h3 traffic goes up to 15Mbps
-        - T = 30s: upper link between s1 and s3 is restored
+        - T = 10s: h1->h3 traffic goes up to 15Mbps
+        - T = 15s: upper link between s1 and s3 is cut
         - T = 35s: h1->h3 traffic close connection
         '''
         self.start_ryu_controller(config_file="./configurations/test_2.json")
@@ -408,13 +473,49 @@ class TestScenarios(unittest.TestCase):
             s1 = net.get("s1")
             s1_eth1_bw = s1.cmd("tc qdisc show dev s1-eth1")
             s1_eth2_bw = s1.cmd("tc qdisc show dev s1-eth2")
-            print("s1-eth1 bandwidth settings:", s1_eth1_bw)
-            print("s1-eth2 bandwidth settings:", s1_eth2_bw)
             self.assertIn("rate 15Mbit", s1_eth1_bw)
             self.assertIn("rate 5Mbit", s1_eth2_bw)
             print("Checked bandwidth settings after traffic increase")
 
-            time.sleep(10)
+            time.sleep(3)
+            cut_link_test_2(net)
+            
+            # random traffic to learn paths sending a ping from each host to each other host
+            for i in range(5):
+                for h in net.hosts:
+                    for j in range(1, 7):
+                        if h.name != "h%d" % j:
+                            h.cmd("ping -c 1 10.0.0.%d &" % j)
+
+            time.sleep(3)
+
+            # check the topology and routing after the link cut
+            print("Checking topology and routing after link cut...")
+            with open("tests_output/topo_graph.json", "r") as f:
+                topo_graph = json.load(f)
+            with open("tests_output/test_2/after_cut_topo_graph.json", "r") as f:
+                expected_topo_graph = json.load(f)
+            with open("tests_output/switch_priority_to_port.json", "r") as f:
+                switch_priority_to_port = json.load(f)
+            with open(
+                "tests_output/test_2/after_cut_switch_priority_to_port.json", "r"
+            ) as f:
+                expected_switch_priority_to_port = json.load(f)
+
+            self.assertEqual(
+                normalize_topo_graph(topo_graph),
+                normalize_topo_graph(expected_topo_graph),
+            )
+            self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
+            print("Checked topology and routing after link cut")
+
+            # run pingall and check if all hosts can reach each other
+            print("Checking connectivity between all hosts after link cut...")
+            pingall_result = net.pingAll()
+            self.assertEqual(pingall_result, 0)
+            print("Checked connectivity between all hosts after link cut")
+
+            time.sleep(5)
             # check if the bandwidth went back to normal after traffic decrease (10Mbps for both ports)
             print("Checking bandwidth settings after traffic decrease...")
             s1_eth1_bw = s1.cmd("tc qdisc show dev s1-eth1")
@@ -426,3 +527,115 @@ class TestScenarios(unittest.TestCase):
         finally:
             net.stop()
 
+    def test_scenario_3(self):
+        '''
+            THIRD SCENARIO
+            @topology:
+                   h1       
+                   |        
+                   s1       
+                  /  \     
+            h2--s2 -- s3--h2
+
+            @priorities:
+            - h1, h2, h3: priority 0
+            - s1-s2 link: priority 0
+            - s2-s3 link: priority 0
+            - s1-s3 link: priority 1
+
+            @scenario:
+            - T = 10s: link between s1 and s2 is cut
+            - T = 20s: link between s1 and s2 is restored
+        '''
+        self.start_ryu_controller(config_file="./configurations/test_3.json")
+        topo = TopologyTest3()
+        net = Mininet(
+            topo=topo,
+            controller=RemoteController("c0", ip="127.0.0.1"),
+            switch=OVSKernelSwitch,
+            build=False,
+            autoSetMacs=True,
+            autoStaticArp=True,
+            link=TCLink,
+        )
+
+        net.build()
+
+        try:
+            net.start()
+
+            time.sleep(4)
+
+            # random traffic to learn paths sending a ping from each host to each other host
+            for i in range(3):
+                for h in net.hosts:
+                    for j in range(1, 3):
+                        if h.name != "h%d" % j:
+                            h.cmd("ping -c 1 10.0.0.%d &" % j)
+
+            time.sleep(4)
+
+            # check topology and routing at init state
+            print("Checking topology and routing at the beginning...")
+            with open("tests_output/topo_graph.json", "r") as f:
+                topo_graph = json.load(f)
+            with open("tests_output/test_3/init_topo_graph.json", "r") as f:
+                expected_topo_graph = json.load(f)
+            with open("tests_output/switch_priority_to_port.json", "r") as f:
+                switch_priority_to_port = json.load(f)
+            with open(
+                "tests_output/test_3/init_switch_priority_to_port.json", "r"
+            ) as f:
+                expected_switch_priority_to_port = json.load(f)
+
+            self.assertEqual(
+                normalize_topo_graph(topo_graph),
+                normalize_topo_graph(expected_topo_graph),
+            )
+            self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
+            print("Checked topology and routing at the beginning")
+            
+            # test connectivity between hosts before link cut
+            print("Checking connectivity between all hosts before link cut...")
+            pingall_result = net.pingAll()
+            self.assertEqual(pingall_result, 0)
+            print("Checked connectivity between all hosts before link cut")
+            
+            time.sleep(3)
+            cut_link_test_3(net)
+            # random traffic to learn paths sending a ping from each host to each other host
+            for i in range(3):
+                for h in net.hosts:
+                    for j in range(1, 3):
+                        if h.name != "h%d" % j:
+                            h.cmd("ping -c 1 10.0.0.%d &" % j)
+
+            time.sleep(4)
+            # check the topology and routing after the link cut
+            print("Checking topology and routing after link cut...")
+            with open("tests_output/topo_graph.json", "r") as f:
+                topo_graph = json.load(f)
+            with open("tests_output/test_3/after_cut_topo_graph.json", "r") as f:
+                expected_topo_graph = json.load(f)
+            with open("tests_output/switch_priority_to_port.json", "r") as f:
+                switch_priority_to_port = json.load(f)
+            with open(
+                "tests_output/test_3/after_cut_switch_priority_to_port.json", "r"
+            ) as f:
+                expected_switch_priority_to_port = json.load(f)
+
+            self.assertEqual(
+                normalize_topo_graph(topo_graph),
+                normalize_topo_graph(expected_topo_graph),
+            )
+            self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
+            print("Checked topology and routing after link cut")
+
+            # test connectivity between hosts after link cut
+            print("Checking connectivity between all hosts after link cut...")
+            pingall_result = net.pingAll()
+            self.assertEqual(pingall_result, 0)
+            print("Checked connectivity between all hosts after link cut")
+
+        finally:
+            net.stop()

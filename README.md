@@ -81,7 +81,7 @@ sudo python3 topology.py
 ###### after 15s
 - h1 -> h3: 15Mbps 
 ###### after 20s
-- cut link s1-eth1<->s2-eth1
+- cut link s1-eth3<->s3-eth1
 ###### after 35s
 - h1 -> h3: close connection
 
