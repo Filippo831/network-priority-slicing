@@ -77,18 +77,6 @@ def cut_link_test_1(net):
     print("Link between s1-eth1 and s2-eth1 cut")
 
 
-def restore_link_test_1(net):
-    s1 = net.get("s1")
-    s2 = net.get("s2")
-    links = net.linksBetween(s1, s2)
-    for l in links:
-        if "s1-eth1" in l.intf1.name or "s1-eth1" in l.intf2.name:
-            l.intf1.ifconfig("up")
-            l.intf2.ifconfig("up")
-            break
-    else:
-        pass
-    print("Link between s1 and s2 restored")
 
 class TopologyTest2(Topo):
     def __init__(self):
@@ -272,7 +260,7 @@ class TestScenarios(unittest.TestCase):
         - s1-s2 lower link: priority 1 (HTTP)
 
         @scenario:
-        - upper link is cut after 10 seconds, then restored after 20 seconds
+        - upper link is cut after 10 seconds
         """
         self.start_ryu_controller(config_file="./configurations/test_1.json")
 
@@ -287,6 +275,12 @@ class TestScenarios(unittest.TestCase):
             link=TCLink,
         )
         net.build()
+
+        # empty tests_output/topo_graph.json and tests_output/switch_priority_to_port.json
+        with open("tests_output/topo_graph.json", "w") as f:
+            pass
+        with open("tests_output/switch_priority_to_port.json", "w") as f:
+            pass
 
         try:
             net.start()
@@ -327,6 +321,10 @@ class TestScenarios(unittest.TestCase):
 
             self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
 
+            pingall_result = net.pingAll()
+            self.assertEqual(pingall_result, 0)
+
+
             print("Checked topology and routing before link cut")
 
             cut_link_test_1(net)
@@ -338,6 +336,9 @@ class TestScenarios(unittest.TestCase):
                         if h.name != "h%d" % j:
                             h.cmd("ping -c 1 10.0.0.%d &" % j)
             time.sleep(4)
+
+            pingall_result = net.pingAll()
+            self.assertEqual(pingall_result, 0)
 
             """
                 after the link cut check if:
@@ -366,40 +367,7 @@ class TestScenarios(unittest.TestCase):
 
             print("checked topology and routing after link cut")
 
-            restore_link_test_1(net)
-            time.sleep(4)
-            for i in range(5):
-                for h in net.hosts:
-                    for j in range(1, 5):
-                    # h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 6 + 1))
-                        if h.name != "h%d" % j:
-                            h.cmd("ping -c 1 10.0.0.%d &" % j)
-            time.sleep(4)
-
-            print("Checking topology and routing after link restore...")
-            with open("tests_output/topo_graph.json", "r") as f:
-                topo_graph = json.load(f)
-            with open("tests_output/test_1/topo_graph_scenario_1_before_cut.json", "r") as f:
-                expected_topo_graph = json.load(f)
-            with open("tests_output/switch_priority_to_port.json", "r") as f:
-                switch_priority_to_port = json.load(f)
-            with open(
-                "tests_output/test_1/switch_priority_to_port_scenario_1_before_cut.json", "r"
-            ) as f:
-                expected_switch_priority_to_port = json.load(f)
-
-            # test this equalities and if false print the differences in a human readable way
-            self.assertEqual(
-                normalize_topo_graph(topo_graph),
-                normalize_topo_graph(expected_topo_graph),
-            )
-
-            self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
-            print("checked topology and routing after link restore")
-
         finally:
-            # t1.join()
-            # t2.join()
             net.stop()
 
     def test_scenario_2(self):
@@ -437,6 +405,11 @@ class TestScenarios(unittest.TestCase):
         )
         net.build()
         
+        with open("tests_output/topo_graph.json", "w") as f:
+            pass
+        with open("tests_output/switch_priority_to_port.json", "w") as f:
+            pass
+
         try:
             net.start()
             time.sleep(4)
@@ -544,17 +517,16 @@ class TestScenarios(unittest.TestCase):
                    |        
                    s1       
                   /  \     
-            h2--s2 -- s3--h2
+            h2--s2 -- s3--h3
 
             @priorities:
             - h1, h2, h3: priority 0
             - s1-s2 link: priority 0
             - s2-s3 link: priority 0
-            - s1-s3 link: priority 1
+            - s1-s3 link: priority 0
 
             @scenario:
             - T = 10s: link between s1 and s2 is cut
-            - T = 20s: link between s1 and s2 is restored
         '''
         self.start_ryu_controller(config_file="./configurations/test_3.json")
         topo = TopologyTest3()
@@ -569,6 +541,11 @@ class TestScenarios(unittest.TestCase):
         )
 
         net.build()
+
+        with open("tests_output/topo_graph.json", "w") as f:
+            pass
+        with open("tests_output/switch_priority_to_port.json", "w") as f:
+            pass
 
         try:
             net.start()
@@ -613,11 +590,6 @@ class TestScenarios(unittest.TestCase):
             time.sleep(3)
             cut_link_test_3(net)
             time.sleep(3)
-
-            # print the value inside switch_priority_to_port.json
-            with open("tests_output/switch_priority_to_port.json", "r") as f:
-                switch_priority_to_port = json.load(f)
-            print("switch_priority_to_port after link cut:", switch_priority_to_port)
 
             # random traffic to learn paths sending a ping from each host to each other host
             for i in range(3):

@@ -45,6 +45,7 @@ class Graph:
             except nx.NetworkXNoPath:
                 pass
 
+        # print actions for debugging
         return actions
 
     def get_shortest_path_actions(self, dpid, dest_dpid, parser):
@@ -125,6 +126,7 @@ class Graph:
             else:
                 actions = self.get_shortest_path_actions(dpid, dst_sw_dpid, parser)
 
+        print(actions)
         return actions
 
     """
