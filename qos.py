@@ -1,3 +1,5 @@
+import subprocess
+
 class QoS:
     def resize_port_bandwidth(self, dpid, port_no, new_bw_mbps):
         """Uses 'tc' command of Linux to change the size of the HW queue of the switch."""

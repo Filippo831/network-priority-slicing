@@ -58,6 +58,7 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
 
         """
         self.switch_priority_to_port = {}
+        self.remove_all_flows()
 
         # Unknown / non-priority traffic learning: {dpid: {dst_ip: port}}
         self.mac_to_port_unknown = {}
@@ -134,6 +135,7 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
         # Determine Routing Actions
         actions = []
 
+
         """
         Routing Logic:
         1. If the destination IP is not known (not in switch_hosts), we treat 
@@ -155,9 +157,25 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
 
             # Learn reverse path so that we can reply back to the source without using the discovery action
             if src_sw_dpid != dpid:
+                # copy the state of self.switch_priority_to_port for future comparison
+                old_switch_priority_to_port = {
+                    dpid: {
+                        priority: ports.copy() for priority, ports in priorities.items()
+                    } for dpid, priorities in self.switch_priority_to_port.items()
+                }
+
                 self.switch_priority_to_port.setdefault(dpid, {}).setdefault(
                     src_priority, {}
                 )[src_sw_dpid] = in_port
+                
+                # print only the differences in the switch_priority_to_port before and after the update
+                new_ports = self.switch_priority_to_port[dpid][src_priority]
+                old_ports = old_switch_priority_to_port.get(dpid, {}).get(src_priority, {})
+                for dst_sw, port in new_ports.items():
+                    old_port = old_ports.get(dst_sw)
+                    if old_port != port:
+                        # print(f"Updated switch_priority_to_port for switch {dpid}, priority {src_priority}, destination switch {dst_sw}: {old_port} -> {port}")
+                        pass
 
                 # if test write self.switch_priority_to_port to tests_output/switch_priority_to_port.json
                 if self.is_test:
@@ -193,6 +211,14 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
         link_down = (msg.desc.state & ofproto.OFPPS_LINK_DOWN) or (
             msg.desc.config & ofproto.OFPPC_PORT_DOWN
         )
+
+
+
+        if self.is_test:
+            import json
+
+            with open("tests_output/switch_priority_to_port.json", "w") as f:
+                json.dump(self.switch_priority_to_port, f, indent=2)
 
         if not link_down:
             return
@@ -237,6 +263,7 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
             src_dpid = str(src.dpid)
             dst_dpid = str(dst.dpid)
 
+
             # Note: src.port_no is the standard attribute in Ryu Link objects
             src_port = getattr(src, "port_no", None)
             pr = self.find_priority(src_dpid, src_port)
@@ -244,10 +271,16 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
             self.topo_graph.add_edge(
                 src_dpid, dst_dpid, key=src_port, port=src_port, priority=pr
             )
+            self.switch_priority_to_port = {}
+            self.remove_flows_for_port(src.dpid, src_port)
+
             # if test write self.topo_graph to tests_output/topo_graph.json
             if self.is_test:
                 import json
                 from networkx.readwrite import json_graph
+
+                with open("tests_output/switch_priority_to_port.json", "w") as f:
+                    json.dump(self.switch_priority_to_port, f, indent=2)
 
                 with open("tests_output/topo_graph.json", "w") as f:
                     json.dump(json_graph.node_link_data(self.topo_graph), f, indent=2)

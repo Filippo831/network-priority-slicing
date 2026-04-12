@@ -2,3 +2,4 @@ __pycache__
 monitor.json
 *.mp4
 test.txt
+test_output.txt
