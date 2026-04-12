@@ -58,8 +58,53 @@ ryu-manager --observe-links controller.py monitor.py
 sudo python3 topology.py
 ```
 
-## Test case
-![Network design](./assets/network_design.md)
+# test cases
+To run the test cases, run this command
+```
+$ sudo -E python3 -m unittest
+```
+## Test case #1
+```
+h1                     h3
+ │                     │ 
+ └──┬──┐eth1 eth1┌──┬──┘ 
+    │s1│=========│s2│    
+ ┌──┴──┘eth2 eth2└──┴──┐ 
+ │                     │ 
+h2                     h4
+```
+#### setup
+###### Hosts
+| Priority | Hosts |
+| --- | --- |
+| 0 | h1, h3 |
+| 1 | h2, h4 |
+
+###### Links
+| Priority | Links |
+| --- | --- |
+| 0 | s1-eth1<->s2-eth1 |
+| 1 | s1-eth2<->s2-eth2 |
+
+#### scenario
+###### start
+- after 10 s: s1-eth1<->s2-eth1 link failure
+
+#### system response
+- After 10 seconds, when the link between s1 and s2 fails, the controller detects the failure and updates the topology graph accordingly. In this case the traffic between h1 and h3 is rerouted through s1-eth2<->s2-eth2, which is the link with the closest lower priority.
+## Test case #2
+<!-- ![Network design](./assets/network_design.md) -->
+```
+h5                                    h3
+ │                                    │ 
+ └──┬──┐eth3  eth1┌──┐eth1  eth1┌──┬──┘ 
+    │s3│==========│s1│==========│s2│    
+ ┌──┴──┘eth4  eth2└┬┬┘eth2  eth2└──┴──┐ 
+ │                 ││                 │ 
+h6                ┌┘└┐                h4
+                  │  │                 
+                 h1  h2
+```
 
 #### setup 
 ###### Hosts
@@ -89,3 +134,33 @@ sudo python3 topology.py
 - After 15 seconds, when the bitrate of the video stream from h1 to h3 exceeds the critical threshold, the controller detects the increase in bandwidth usage and dynamically reallocates bandwidth from the Best Effort slice (Priority 1) to the Video slice (Priority 0). This ensures that the high-priority traffic continues to flow smoothly without packet loss, even during the spike in demand.
 - After 20 seconds, when the link between s1 and s2 fails, the controller detects the failure and updates the topology graph accordingly. In this case the priority 0 traffic that were supposed to flow through the failed link will be rerouted through the link with the closer lower priority the link with priority 1.
 - After 35 seconds, when the connection from h1 to h3 is closed, the controller detects the change in traffic patterns and restores the original bandwidth allocation for the Best Effort slice (Priority 1), ensuring that all network slices return to their baseline physical configuration.
+
+## test case #3
+```
+              ┌──h1       
+           ┌──┤           
+           │s1│           
+      eth2/└──┘\eth1      
+         /      \         
+        /        \        
+   eth2/          \eth1   
+    ┌──┐          ┌──┐    
+h3──┤s3├──────────┤s2├──h2
+    └──┘eth1  eth2└──┘    
+```
+#### setup 
+###### Hosts
+| Priority | Hosts |
+| --- | --- |
+| 0 | h1, h3, h5 |
+
+###### Links
+| Priority | Links |
+| --- | --- |
+| 0 | s1-eth1<->s2-eth1; s1-eth1<->s2-eth1; s1-eth2<->s3-eth2|
+#### scenario
+###### after 10s
+- s1-eth1<->s2-eth1 link failure
+
+#### system response
+- After 10 seconds, when the link between s1 and s2 fails, the controller detects the failure and updates the topology graph accordingly. In this case the traffic between h1 and h2 is rerouted through s1-eth2<->s3-eth2 and s3-eth1<->s2-eth1
