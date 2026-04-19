@@ -126,7 +126,7 @@ class Graph:
             else:
                 actions = self.get_shortest_path_actions(dpid, dst_sw_dpid, parser)
 
-        print(actions)
+        # print(actions)
         return actions
 
     """
