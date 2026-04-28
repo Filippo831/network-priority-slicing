@@ -33,6 +33,20 @@ class FlowManager():
         )
         self.datapaths[dpid].send_msg(mod)
 
+    # remove all flows for every port and switch
+    def remove_all_flows(self):
+        for dpid in self.datapaths:
+            parser = self.datapaths[dpid].ofproto_parser
+            ofproto = self.datapaths[dpid].ofproto
+            mod = parser.OFPFlowMod(
+                datapath=self.datapaths[dpid],
+                command=ofproto.OFPFC_DELETE,
+                out_port=ofproto.OFPP_ANY,
+                out_group=ofproto.OFPG_ANY,
+                table_id=ofproto.OFPTT_ALL,
+                match=parser.OFPMatch(),
+            )
+            self.datapaths[dpid].send_msg(mod)
 
     def find_priority(self, dpid, port_no):
         """Return the priority index for a given switch dpid and port number, or None."""

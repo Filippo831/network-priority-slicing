@@ -6,6 +6,7 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib import hub
 from ryu.lib.packet import packet, ethernet
 
+
 class NetworkTrafficMonitor(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
@@ -13,7 +14,7 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
         super(NetworkTrafficMonitor, self).__init__(*args, **kwargs)
         self.datapaths = {}
         # Stores previous byte counts: {(dpid, port_no): last_byte_count}
-        self.port_stats_cache = {} 
+        self.port_stats_cache = {}
         self.monitor_thread = hub.spawn(self._monitor)
 
     # --- SECTION 2: MONITORING & BANDWIDTH ---
@@ -40,51 +41,60 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
         dpid = ev.msg.datapath.id
 
         # Connect to the routing application to get the preemption state
-        routing_app = app_manager.lookup_service_brick('SimpleRouting13')
+        routing_app = app_manager.lookup_service_brick("SimpleRouting13")
         if not routing_app:
-            print("[Monitor] Warning: Routing application not found. Skipping preemption logic.")
+            print(
+                "[Monitor] Warning: Routing application not found. Skipping preemption logic."
+            )
             return
-        
-        print(f"\n[Switch {dpid:016x} Traffic Report]")
-        # print(f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Total Packets':<12}")
-        # print("-" * 55)
-        print(f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Tot. Packets':<12} | {'Cost':<12} | {'State QoS':<12}")
-        print("-" * 77)
+        #
+        # print(f"\n[Switch {dpid:016x} Traffic Report]")
+        # # print(f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Total Packets':<12}")
+        # # print("-" * 55)
+        # print(
+        #     f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Tot. Packets':<12} | {'Cost':<12} | {'State QoS':<12}"
+        # )
+        # print("-" * 77)
 
         tx_speeds = {}
 
         for stat in sorted(body, key=lambda x: x.port_no):
-            if stat.port_no == 0xfffffffe: continue # Skip local port
-            
+            if stat.port_no == 0xFFFFFFFE:
+                continue  # Skip local port
+
             key = (dpid, stat.port_no)
             prev_rx, prev_tx = self.port_stats_cache.get(key, (0, 0))
-            
+
             # Calculate throughput: (Current - Previous) * 8 bits / 5 seconds / 10^6
             rx_speed = (stat.rx_bytes - prev_rx) * 8 / 5 / 10**6
             tx_speed = (stat.tx_bytes - prev_tx) * 8 / 5 / 10**6
-            
+
             self.port_stats_cache[key] = (stat.rx_bytes, stat.tx_bytes)
             tx_speeds[stat.port_no] = tx_speed
 
             # Cost calculation based on utilization
             B_max = 10.0
-            U = min(tx_speed, B_max - 0.1) # Avoid division by zero and unrealistic speeds
+            U = min(
+                tx_speed, B_max - 0.1
+            )  # Avoid division by zero and unrealistic speeds
             cost = 1.0 + 5.0 * (1 / (1 - (U / B_max)))
 
             state = "PREEMPTED" if routing_app.is_preempted else "NORMAL"
 
             # print(f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12}")
-            print(f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12} | {cost:<12.2f} | {state:<12}")
+            # print(
+            #     f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12} | {cost:<12.2f} | {state:<12}"
+            # )
 
         # Preemption logic for switch 1 (s1)
         if dpid == 1:
             video_port = 1  # s1-eth1
-            http_port = 2 # s1-eth2
-            
+            http_port = 2  # s1-eth2
+
             # If the video port is congested (over 8.5 Mbps) and we haven't preempted yet -> Preempt the video traffic
             if not routing_app.is_preempted and tx_speeds.get(video_port, 0) > 8.5:
                 routing_app.execute_preemption(dpid, video_port, http_port)
-            
+
             # If the video port is not congested (under 6 Mbps) and we have preempted -> Rollback the video traffic
             elif routing_app.is_preempted and tx_speeds.get(video_port, 0) < 6.0:
                 routing_app.execute_rollback(dpid, video_port, http_port)

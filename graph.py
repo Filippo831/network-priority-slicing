@@ -45,6 +45,27 @@ class Graph:
             except nx.NetworkXNoPath:
                 pass
 
+        # print actions for debugging
+        return actions
+
+    def get_shortest_path_actions(self, dpid, dest_dpid, parser):
+        actions = []
+        dpid_str = str(dpid)
+        dest_dpid_str = str(dest_dpid)
+
+        try:
+            path = nx.shortest_path(self.topo_graph, source=dpid_str, target=dest_dpid_str)
+            if len(path) > 1:
+                src = path[0]
+                dst = path[1]
+                edge_data = self.topo_graph.get_edge_data(src, dst)
+                if edge_data:
+                    # Get the first available port from the edge data
+                    port = next(iter(edge_data.values()))["port"]
+                    actions.append(parser.OFPActionOutput(port))
+        except nx.NetworkXNoPath:
+            pass
+
         return actions
 
     def display_networkx_graph(self, nx_graph):
@@ -102,7 +123,10 @@ class Graph:
             fallback_port = self._find_fallback_port(dpid, priority, dst_sw_dpid)
             if fallback_port:
                 actions = [parser.OFPActionOutput(fallback_port)]
+            else:
+                actions = self.get_shortest_path_actions(dpid, dst_sw_dpid, parser)
 
+        # print(actions)
         return actions
 
     """
@@ -151,13 +175,13 @@ class Graph:
         )
         datapath.send_msg(out)
 
-
-    '''
+    """
     Dynamically update the hosts list and their connection to the switches
-    '''
+    """
+
     def _update_host_location(self, ip, dpid, port):
         if ip not in self.switch_hosts:
             self.switch_hosts[ip] = (dpid, port)
             if ip not in self.hosts_list:
                 self.hosts_list.append(ip)
-            pprint.pprint(self.switch_hosts)
+            # pprint.pprint(self.switch_hosts)
