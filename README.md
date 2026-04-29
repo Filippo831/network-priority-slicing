@@ -1,13 +1,13 @@
 # Network priority slicing
 
-## table of contents
+## Table of contents
 - [Overview](#overview)
 - [Features](#features)
 - [Getting started](#getting-started)
 - [Test case](#test-case)
 
 
-## overview
+## Overview
 A Ryu-based OpenFlow 1.3 controller that implements **Priority-Based Slicing**, **Adaptive Path Discovery** and **QoS management**. 
 
 
@@ -32,12 +32,12 @@ To guarantee Service Level Agreements (SLAs) for Premium traffic (Priority 0), t
 
 
 ## Getting started
-##### Clone the repository
+#### Clone the repository
 ```
 git clone https://github.com/Filippo831/network-priority-slicing.git
 cd network-priority-slicing
 ```
-##### Download requirements
+#### Download requirements
 ```
 pip install networkx 
 ```
@@ -48,22 +48,24 @@ pip install networkx
 <!-- mv Rick_Astley_Never_Gonna_Give_You_Up.mp4 input_video.mp4 -->
 <!-- ``` -->
 
-##### Start the controller
+#### Check if the environment is working by executing these lines
+
+##### 1. Starting our custom controller
 ```
 ryu-manager --observe-links controller.py monitor.py
 ```
 
-##### Build the topology
+##### 2. Creation of a basic topology and execution of some tests
 ```
 sudo python3 topology.py
 ```
 
-# test cases
+## Test cases
 To run the test cases, run this command
 ```
 $ sudo -E python3 -m unittest
 ```
-## Test case #1
+### Test case #1
 ```
 h1                     h3
  │                     │ 
@@ -73,26 +75,19 @@ h1                     h3
  │                     │ 
 h2                     h4
 ```
-#### setup
-###### Hosts
-| Priority | Hosts |
-| --- | --- |
-| 0 | h1, h3 |
-| 1 | h2, h4 |
+#### Setup
+| Priority | Hosts | Links |
+| --- | --- | --- |
+| 0 | h1, h3 | s1-eth1<->s2-eth1 |
+| 1 | h2, h4 | s1-eth2<->s2-eth2 |
 
-###### Links
-| Priority | Links |
-| --- | --- |
-| 0 | s1-eth1<->s2-eth1 |
-| 1 | s1-eth2<->s2-eth2 |
+#### Scenario
+##### After 10 seconds - link failure
+- s1-eth1<->s2-eth1 link failure: the link between s1 and s2 fails.
 
-#### scenario
-###### start
-- after 10 s: s1-eth1<->s2-eth1 link failure
+- Controller detects the failure and updates the topology graph accordingly. In this case the traffic between h1 and h3 is rerouted through s1-eth2<->s2-eth2, which is the link with the closest lower priority.
 
-#### system response
-- After 10 seconds, when the link between s1 and s2 fails, the controller detects the failure and updates the topology graph accordingly. In this case the traffic between h1 and h3 is rerouted through s1-eth2<->s2-eth2, which is the link with the closest lower priority.
-## Test case #2
+### Test case #2
 <!-- ![Network design](./assets/network_design.md) -->
 ```
 h5                                    h3
@@ -106,36 +101,31 @@ h6                ┌┘└┐                h4
                  h1  h2
 ```
 
-#### setup 
-###### Hosts
-| Priority | Hosts |
-| --- | --- |
-| 0 | h1, h3, h5 |
-| 1 | h2, h4, h6 |
+#### Setup 
+##### Hosts
+| Priority | Hosts | Links |
+| --- | --- | --- |
+| 0 | h1, h3, h5 | s1-eth1<->s2-eth1; s1-eth3<->s3-eth1|
+| 1 | h2, h4, h6 | s1-eth2<->s2-eth2; s1-eth4<->s3-eth2|
 
-###### Links
-| Priority | Links |
-| --- | --- |
-| 0 | s1-eth1<->s2-eth1; s1-eth3<->s3-eth1|
-| 1 | s1-eth2<->s2-eth2; s1-eth4<->s3-eth2|
+#### Scenario
+##### Start
+- h1 -> h3: 5 Mbps priority 0.
+- h2 -> h4: 8 Mbps priority 1.
+##### After 15 seconds - preemption mechanism
+- h1 -> h3: 15Mbps: bitrate of the video stream from h1 to h3 exceeds the maximum bitrate available.
 
-#### scenario
-###### start
-- h2 -> h4: 8Mbps priority 1
-- h1 -> h3: 5Mbps priority 0
-###### after 15s
-- h1 -> h3: 15Mbps 
-###### after 20s
-- cut link s1-eth3<->s3-eth1
-###### after 35s
-- h1 -> h3: close connection
+- Controller detects the increase in bandwidth usage and dynamically reallocates bandwidth from the Best Effort slice (Priority 1) to the Video slice (Priority 0). This ensures that the high-priority traffic continues to flow smoothly without packet loss, even during the spike in demand.
+##### After 20 seconds - link failure
+- s1-eth3<->s3-eth1 link failure: the link between s1 and s2 fails.
 
-#### system response
-- After 15 seconds, when the bitrate of the video stream from h1 to h3 exceeds the critical threshold, the controller detects the increase in bandwidth usage and dynamically reallocates bandwidth from the Best Effort slice (Priority 1) to the Video slice (Priority 0). This ensures that the high-priority traffic continues to flow smoothly without packet loss, even during the spike in demand.
-- After 20 seconds, when the link between s1 and s2 fails, the controller detects the failure and updates the topology graph accordingly. In this case the priority 0 traffic that were supposed to flow through the failed link will be rerouted through the link with the closer lower priority the link with priority 1.
-- After 35 seconds, when the connection from h1 to h3 is closed, the controller detects the change in traffic patterns and restores the original bandwidth allocation for the Best Effort slice (Priority 1), ensuring that all network slices return to their baseline physical configuration.
+- Controller detects the failure and updates the topology graph accordingly. In this case the priority 0 traffic that were supposed to flow through the failed link will be rerouted through the link with the closer lower priority the link with priority 1.
+##### After 35 seconds - elastic rollback
+- Close connection h1 -> h3: the connection from h1 to h3 is closed.
 
-## test case #3
+- Controller detects the change in traffic patterns and restores the original bandwidth allocation for the Best Effort slice (Priority 1), ensuring that all network slices return to their baseline physical configuration.
+
+### Test case #3
 ```
               ┌──h1       
            ┌──┤           
@@ -148,19 +138,14 @@ h6                ┌┘└┐                h4
 h3──┤s3├──────────┤s2├──h2
     └──┘eth1  eth2└──┘    
 ```
-#### setup 
+#### Setup 
 ###### Hosts
-| Priority | Hosts |
-| --- | --- |
-| 0 | h1, h3, h5 |
+| Priority | Hosts | Links |
+| --- | --- | --- |
+| 0 | h1, h3, h5 | s1-eth1<->s2-eth1; s1-eth1<->s2-eth1; s1-eth2<->s3-eth2|
 
-###### Links
-| Priority | Links |
-| --- | --- |
-| 0 | s1-eth1<->s2-eth1; s1-eth1<->s2-eth1; s1-eth2<->s3-eth2|
-#### scenario
-###### after 10s
-- s1-eth1<->s2-eth1 link failure
+#### Scenario
+##### After 10 seconds - link failure
+- s1-eth1<->s2-eth1 link failure: link between s1 and s2 fails.
 
-#### system response
-- After 10 seconds, when the link between s1 and s2 fails, the controller detects the failure and updates the topology graph accordingly. In this case the traffic between h1 and h2 is rerouted through s1-eth2<->s3-eth2 and s3-eth1<->s2-eth1
+- Controller detects the failure and updates the topology graph accordingly. In this case the traffic between h1 and h2 is rerouted through s1-eth2<->s3-eth2 and s3-eth1<->s2-eth1.
