@@ -69,7 +69,8 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
             for ip in priority_array:
                 self.hosts_priorities_set[ip] = index
 
-        self.is_preempted = False  # flag to indicate if a preemption event has occurred
+        self.is_preempted = {}  # Dictionary: {dpid: True/False}
+        self.preemption_map = getattr(self, 'preemption_map', {}) # Load preemption map from test_2.json
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -191,78 +192,6 @@ class SimpleRouting13(app_manager.RyuApp, FlowManager, QoS, Graph, Config):
                     msg, dpid, src_priority, dst_sw_dpid, src_ip, dst_ip, in_port
                 )
 
-                if known_port:
-                    actions = [
-                        parser.OFPActionDecNwTtl(),
-                        parser.OFPActionOutput(known_port),
-                    ]
-                    match = parser.OFPMatch(
-                        in_port=in_port,
-                        ipv4_src=src_ip,
-                        ipv4_dst=dst_ip,
-                        eth_type=ether_types.ETH_TYPE_IP,
-                    )
-                    install_flow(match, actions)
-                    actions = [parser.OFPActionOutput(known_port)]
-                else:
-                    # Unknown route: do slice-specific discovery (send to slice ports except in_port)
-                    actions = self.routing.get_slice_discovery_actions(
-                        dpid,
-                        src_priority,
-                        in_port,
-                        parser,
-                        dest_dpid=dst_sw_dpid,
-                        nx_graph=self.topo_graph
-                    )
-
-                    # if actions is empty, it means this switch has no ports in the source host's priority slice.
-                    # If so, check if the src priority is lower than the lowest priority that reaches the destination switch, if so get the
-                    # lowest priority available. If not get the next lower priority that reaches the destination switch
-
-                    if not actions:
-                        for p_backup in range(len(self.router_links_priorities[str(dpid)])):
-                            if p_backup == src_priority:
-                                continue
-                            actions = self.routing.get_slice_discovery_actions(
-                                dpid,
-                                p_backup,
-                                in_port,
-                                parser,
-                                dest_dpid=dst_sw_dpid,
-                                nx_graph=self.topo_graph
-                            )
-                            if actions:
-                                self.logger.info("No path on priority %s. Backup path found on priority %s", src_priority, p_backup)
-                                break
-                                
-                        available_priorities = sorted(
-                            [
-                                p
-                                for p in self.switch_priority_to_port.get(dpid, {})
-                                if dst_sw_dpid in self.switch_priority_to_port[dpid][p]
-                            ]
-                        )
-                        if available_priorities:
-                            if src_priority > available_priorities[-1]:
-                                selected_priority = available_priorities[-1]
-                            else:
-                                lower_priorities = [
-                                    p for p in available_priorities if p > src_priority
-                                ]
-                                selected_priority = (
-                                    lower_priorities[0] if lower_priorities else None
-                                )
-
-                            if selected_priority is not None:
-                                known_port = self.switch_priority_to_port[dpid][
-                                    selected_priority
-                                ][dst_sw_dpid]
-
-                                actions = [parser.OFPActionOutput(known_port)]
-
-        # ---------------------------
-        # 3) Install flow + send PacketOut if actions were determined
-        # ---------------------------
         if actions:
             # Prepend TTL decrement for all outgoing traffic
             actions = [parser.OFPActionDecNwTtl()] + actions

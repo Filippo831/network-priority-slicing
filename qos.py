@@ -30,23 +30,26 @@ class QoS:
 
     def execute_preemption(self, dpid, video_port, http_port):
         """Preempt the video traffic by giving it more bandwidth and limiting HTTP when congestion is detected."""
-        if self.is_preempted:
+        if self.is_preempted.get(dpid, False):
             return
-        self.is_preempted = True
+
+        self.is_preempted[dpid] = True
         self.logger.info(
-            "\n*** [PREEMPTION] 15 Mbps requested on video port! Preempting HTTP traffic to prioritize video."
+            f"\n*** [PREEMPTION - SW {dpid}] 15 Mbps requested on video port! Preempting HTTP traffic to prioritize video."
         )
+
         # Resize the ports: give more bandwidth to video and limit HTTP, keeping the total bandwidth within the max capacity of the link (20 Mbps in this case)
         self.resize_port_bandwidth(dpid, video_port, 15)
         self.resize_port_bandwidth(dpid, http_port, 5)
 
     def execute_rollback(self, dpid, video_port, http_port):
         """Rollback the preemption by restoring the original bandwidth settings when congestion is resolved."""
-        if not self.is_preempted:
+        if not self.is_preempted.get(dpid, False):
             return
-        self.is_preempted = False
+
+        self.is_preempted[dpid] = False
         self.logger.info(
-            "\n*** [ROLLBACK] Congestion resolved on video port. Rolling back to original bandwidth settings."
+            f"\n*** [ROLLBACK - SW {dpid}] Congestion resolved on video port. Rolling back to original bandwidth settings."
         )
         self.resize_port_bandwidth(dpid, video_port, 10)
         self.resize_port_bandwidth(dpid, http_port, 10)

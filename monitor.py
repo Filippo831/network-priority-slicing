@@ -86,15 +86,19 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
             #     f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12} | {cost:<12.2f} | {state:<12}"
             # )
 
-        # Preemption logic for switch 1 (s1)
-        if dpid == 1:
-            video_port = 1  # s1-eth1
-            http_port = 2  # s1-eth2
+        # Preemption logic
+        if str(dpid) in routing_app.preemption_map:
+            config = routing_app.preemption_map[str(dpid)]
+            v_port = config['video']
+            h_port = config['http']
+            
+            v_speed = tx_speeds.get(v_port, 0)
+            is_active = routing_app.is_preempted.get(dpid, False)
 
             # If the video port is congested (over 8.5 Mbps) and we haven't preempted yet -> Preempt the video traffic
-            if not routing_app.is_preempted and tx_speeds.get(video_port, 0) > 8.5:
-                routing_app.execute_preemption(dpid, video_port, http_port)
+            if not is_active and v_speed > 8.5:
+                routing_app.execute_preemption(dpid, v_port, h_port)
 
             # If the video port is not congested (under 6 Mbps) and we have preempted -> Rollback the video traffic
-            elif routing_app.is_preempted and tx_speeds.get(video_port, 0) < 6.0:
-                routing_app.execute_rollback(dpid, video_port, http_port)
+            elif is_active and v_speed < 6.0:
+                routing_app.execute_rollback(dpid, v_port, h_port)
