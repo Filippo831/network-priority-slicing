@@ -23,7 +23,7 @@ class QoS:
         try:
             subprocess.run(cmd, check=True, stderr=subprocess.DEVNULL)
             self.logger.info(
-                f"*** QOS HW UPDATE: {interface_name} configured with {new_bw_mbps} Mbps!"
+                f"QOS HW UPDATE: {interface_name} configured with {new_bw_mbps} Mbps."
             )
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Error in tc command for {interface_name}")
@@ -35,7 +35,7 @@ class QoS:
 
         self.is_preempted[dpid] = True
         self.logger.info(
-            f"\n*** [PREEMPTION - SW {dpid}] 15 Mbps requested on video port! Preempting HTTP traffic to prioritize video."
+            f"\nPREEMPTION - SW {dpid}: 15 Mbps requested on video port! Preempting HTTP traffic to prioritize video."
         )
 
         # Resize the ports: give more bandwidth to video and limit HTTP, keeping the total bandwidth within the max capacity of the link (20 Mbps in this case)
@@ -49,7 +49,7 @@ class QoS:
 
         self.is_preempted[dpid] = False
         self.logger.info(
-            f"\n*** [ROLLBACK - SW {dpid}] Congestion resolved on video port. Rolling back to original bandwidth settings."
+            f"\nROLLBACK - SW {dpid}: Congestion resolved on video port. Rolling back to original bandwidth settings."
         )
         self.resize_port_bandwidth(dpid, video_port, 10)
         self.resize_port_bandwidth(dpid, http_port, 10)

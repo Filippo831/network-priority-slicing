@@ -74,7 +74,7 @@ def cut_link_test_1(net):
             break
     else:
         pass
-    print("Link between s1-eth1 and s2-eth1 cut")
+    print("\nLink between s1-eth1 and s2-eth1 cut")
 
 
 
@@ -145,7 +145,7 @@ def cut_link_test_2(net):
             break
     else:
         pass
-    print("Link between s1-eth3 and s3-eth1 cut")
+    print("\nLink between s1-eth3 and s3-eth1 cut")
 
 class TopologyTest3(Topo):
     def __init__(self):
@@ -197,7 +197,7 @@ def cut_link_test_3(net):
             break
     else:
         pass
-    print("Link between s1-eth1 and s2-eth1 cut")
+    print("\nLink between s1-eth1 and s2-eth1 cut")
 
 def normalize_topo_graph(graph):
     normalized_links = []
@@ -236,7 +236,7 @@ class TestScenarios(unittest.TestCase):
             ["ryu-manager", "--observe-links", "controller.py", "monitor.py"],
             env=my_env,
         )
-        print("Waiting for Ryu controller to start...")
+        print("\nWaiting for Ryu controller to start...")
         time.sleep(5)  # wait for the controller to start and load the config
         print("Ryu controller started with config:", config_file)
 
@@ -263,6 +263,8 @@ class TestScenarios(unittest.TestCase):
         - upper link is cut after 10 seconds
         """
         self.start_ryu_controller(config_file="./configurations/test_1.json")
+
+        print("\nFIRST SCENARIO: Link cut between s1 and s2 with priority 0")
 
         topo = TopologyTest1()
         net = Mininet(
@@ -301,7 +303,7 @@ class TestScenarios(unittest.TestCase):
                 - tests_output/switch_priority_to_port.json is equals to tests_output/switch_priority_to_port_scenario_1_before_cut.json
             """
             time.sleep(4)
-            print("Checking topology and routing before link cut...")
+            print("\nChecking topology and routing before link cut...")
             with open("tests_output/topo_graph.json", "r") as f:
                 topo_graph = json.load(f)
             with open("tests_output/test_1/topo_graph_scenario_1_before_cut.json", "r") as f:
@@ -337,16 +339,15 @@ class TestScenarios(unittest.TestCase):
                             h.cmd("ping -c 1 10.0.0.%d &" % j)
             time.sleep(4)
 
-            pingall_result = net.pingAll()
-            self.assertEqual(pingall_result, 0)
-
             """
                 after the link cut check if:
                 - tests_output/topo_graph.json is equals to tests_output/topo_graph_scenario_1_after_cut.json
                 - tests_output/switch_priority_to_port.json is equals to tests_output/switch_priority_to_port_scenario_1_after_cut.json
             """
 
-            print("Checking topology and routing after link cut...")
+            print("\nChecking topology and routing after link cut...")
+            pingall_result = net.pingAll()
+            self.assertEqual(pingall_result, 0)
 
             with open("tests_output/topo_graph.json", "r") as f:
                 topo_graph = json.load(f)
@@ -365,10 +366,11 @@ class TestScenarios(unittest.TestCase):
             )
             self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
 
-            print("checked topology and routing after link cut")
+            print("Checked topology and routing after link cut")
 
         finally:
             net.stop()
+            print("\nFIRST SCENARIO test completed\n")
 
     def test_scenario_2(self):
         '''
@@ -393,6 +395,9 @@ class TestScenarios(unittest.TestCase):
         - T = 35s: h1->h3 traffic close connection
         '''
         self.start_ryu_controller(config_file="./configurations/test_2.json")
+
+        print("\nSECOND SCENARIO: Preemption of video traffic from h1 to h3 and link cut between s1 and s3")
+
         topo = TopologyTest2()
         net = Mininet(
             topo=topo,
@@ -424,7 +429,7 @@ class TestScenarios(unittest.TestCase):
             time.sleep(10)
 
             # check topology and routing at init state
-            print("Checking topology and routing at the beginning...")
+            print("\nChecking topology and routing at the beginning...")
             with open("tests_output/topo_graph.json", "r") as f:
                 topo_graph = json.load(f)
             with open("tests_output/test_2/init_topo_graph.json", "r") as f:
@@ -444,14 +449,14 @@ class TestScenarios(unittest.TestCase):
             print("Checked topology and routing at the beginning")
 
             # increase traffic from h1 to h3 to 15Mbps
-            print("Increasing traffic from h1 to h3 to 15Mbps...")
+            print("\nIncreasing traffic from h1 to h3 to 15Mbps...")
             h1 = net.get("h1")
             h3 = net.get("h3")
             h1.cmd("iperf -c %s -u -b 15M -t 10 &" % h3.IP())
             time.sleep(10)
 
             # check if the port s1-eth1 had increased the bandwidth to 15Mbps and s1-eth2 had decreased to 5Mbps
-            print("Checking bandwidth settings after traffic increase...")
+            print("\nChecking bandwidth settings after traffic increase...")
             s1 = net.get("s1")
             s1_eth1_bw = s1.cmd("tc qdisc show dev s1-eth1")
             s1_eth2_bw = s1.cmd("tc qdisc show dev s1-eth2")
@@ -472,7 +477,7 @@ class TestScenarios(unittest.TestCase):
             time.sleep(3)
 
             # check the topology and routing after the link cut
-            print("Checking topology and routing after link cut...")
+            print("\nChecking topology and routing after link cut...")
             with open("tests_output/topo_graph.json", "r") as f:
                 topo_graph = json.load(f)
             with open("tests_output/test_2/after_cut_topo_graph.json", "r") as f:
@@ -492,14 +497,14 @@ class TestScenarios(unittest.TestCase):
             print("Checked topology and routing after link cut")
 
             # run pingall and check if all hosts can reach each other
-            print("Checking connectivity between all hosts after link cut...")
+            print("\nChecking connectivity between all hosts after link cut...")
             pingall_result = net.pingAll()
             self.assertEqual(pingall_result, 0)
             print("Checked connectivity between all hosts after link cut")
 
             time.sleep(5)
             # check if the bandwidth went back to normal after traffic decrease (10Mbps for both ports)
-            print("Checking bandwidth settings after traffic decrease...")
+            print("\nChecking bandwidth settings after traffic decrease...")
             s1_eth1_bw = s1.cmd("tc qdisc show dev s1-eth1")
             s1_eth2_bw = s1.cmd("tc qdisc show dev s1-eth2")
             self.assertIn("rate 10Mbit", s1_eth1_bw)
@@ -508,6 +513,7 @@ class TestScenarios(unittest.TestCase):
         
         finally:
             net.stop()
+            print("\nSECOND SCENARIO test completed\n")
 
     def test_scenario_3(self):
         '''
@@ -529,6 +535,9 @@ class TestScenarios(unittest.TestCase):
             - T = 10s: link between s1 and s2 is cut
         '''
         self.start_ryu_controller(config_file="./configurations/test_3.json")
+
+        print("\nTHIRD SCENARIO: Link cut between s1 and s2 considering a close topology with multiple paths between hosts")
+
         topo = TopologyTest3()
         net = Mininet(
             topo=topo,
@@ -562,7 +571,7 @@ class TestScenarios(unittest.TestCase):
             time.sleep(4)
 
             # check topology and routing at init state
-            print("Checking topology and routing at the beginning...")
+            print("\nChecking topology and routing at the beginning...")
             with open("tests_output/topo_graph.json", "r") as f:
                 topo_graph = json.load(f)
             with open("tests_output/test_3/init_topo_graph.json", "r") as f:
@@ -582,7 +591,7 @@ class TestScenarios(unittest.TestCase):
             print("Checked topology and routing at the beginning")
             
             # test connectivity between hosts before link cut
-            print("Checking connectivity between all hosts before link cut...")
+            print("\nChecking connectivity between all hosts before link cut...")
             pingall_result = net.pingAll()
             self.assertEqual(pingall_result, 0)
             print("Checked connectivity between all hosts before link cut")
@@ -599,12 +608,12 @@ class TestScenarios(unittest.TestCase):
                             h.cmd("ping -c 1 10.0.0.%d &" % j)
 
             time.sleep(4)
-            print("Checking connectivity between all hosts after link cut...")
+            print("\nChecking connectivity between all hosts after link cut...")
             pingall_result = net.pingAll()
             self.assertEqual(pingall_result, 0)
             print("Checked connectivity between all hosts after link cut")
             # check the topology and routing after the link cut
-            print("Checking topology and routing after link cut...")
+            print("\nChecking topology and routing after link cut...")
             with open("tests_output/topo_graph.json", "r") as f:
                 topo_graph = json.load(f)
             with open("tests_output/test_3/after_cut_topo_graph.json", "r") as f:
@@ -627,3 +636,4 @@ class TestScenarios(unittest.TestCase):
 
         finally:
             net.stop()
+            print("\nTHIRD SCENARIO test completed\n")
