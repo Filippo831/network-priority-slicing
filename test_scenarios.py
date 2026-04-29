@@ -244,6 +244,7 @@ class TestScenarios(unittest.TestCase):
         if self.ryu_process:
             self.ryu_process.terminate()
             self.ryu_process.wait()
+            input("\nPress Enter to move to the next scenario...")
 
     def test_scenario_1(self):
         """
