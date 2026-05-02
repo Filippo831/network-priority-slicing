@@ -1,4 +1,5 @@
 {
+    "test_name": "test_3",
     "router_links_priorities": {
         "1": [[1, 2]],
         "2": [[1, 2]],

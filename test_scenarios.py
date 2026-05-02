@@ -229,12 +229,20 @@ class TestScenarios(unittest.TestCase):
             self.ryu_process.terminate()
             self.ryu_process.wait()
 
+        test_name = config_file.split('/')[-1].split('.')[0]
+        log_file_path = f"tests_output/ryu_log_{test_name}.log"
+
+        with open(log_file_path, "w") as f:
+            pass  # clear log file before starting the controller
+
         my_env = os.environ.copy()
         my_env["RYU_TEST"] = "true"
         my_env["CONFIG_PATH"] = config_file
         self.ryu_process = subprocess.Popen(
-            ["ryu-manager", "--observe-links", "controller.py", "monitor.py"],
+            ["ryu-manager", "--observe-links", "controller.py", "monitor.py", "--log-file", log_file_path],
             env=my_env,
+            stdout=subprocess.DEVNULL, # redirect stdout to devnull to avoid cluttering the console with Ryu logs
+            stderr=subprocess.DEVNULL
         )
         print("\nWaiting for Ryu controller to start...")
         time.sleep(5)  # wait for the controller to start and load the config

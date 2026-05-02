@@ -5,6 +5,9 @@ from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib import hub
 from ryu.lib.packet import packet, ethernet
+import time
+import csv
+import os
 
 
 class NetworkTrafficMonitor(app_manager.RyuApp):
@@ -17,7 +20,8 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
         self.port_stats_cache = {}
         self.monitor_thread = hub.spawn(self._monitor)
 
-    # --- SECTION 2: MONITORING & BANDWIDTH ---
+        self.csv_file = None
+
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
         datapath = ev.datapath
@@ -43,20 +47,22 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
         # Connect to the routing application to get the preemption state
         routing_app = app_manager.lookup_service_brick("SimpleRouting13")
         if not routing_app:
-            print(
-                "[Monitor] Warning: Routing application not found. Skipping preemption logic."
-            )
+            print("[Monitor] Warning: Routing application not found. Skipping preemption logic.")
             return
-        #
-        # print(f"\n[Switch {dpid:016x} Traffic Report]")
-        # # print(f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Total Packets':<12}")
-        # # print("-" * 55)
-        # print(
-        #     f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Tot. Packets':<12} | {'Cost':<12} | {'State QoS':<12}"
-        # )
-        # print("-" * 77)
+
+        if not self.csv_file:
+            test_name = getattr(routing_app, "test_name", "unknown_test")
+            self.csv_file = f'tests_output/traffic_report_{test_name}.csv'
+
+            with open(self.csv_file, mode='w', newline='') as file:
+                writer = csv.writer(file, delimiter=';')
+                writer.writerow(['Timestamp', 'Switch_DPID', 'Port', 'RX_Mbps', 'Tx_Mbps', 'Total_Packets', 'State_QoS'])
+
+            self.start_time = time.time()
 
         tx_speeds = {}
+        rx_speeds = {}
+        tot_packets = {}
 
         for stat in sorted(body, key=lambda x: x.port_no):
             if stat.port_no == 0xFFFFFFFE:
@@ -71,6 +77,8 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
 
             self.port_stats_cache[key] = (stat.rx_bytes, stat.tx_bytes)
             tx_speeds[stat.port_no] = tx_speed
+            rx_speeds[stat.port_no] = rx_speed
+            tot_packets[stat.port_no] = stat.rx_packets + stat.tx_packets
 
             # Cost calculation based on utilization
             B_max = 10.0
@@ -78,13 +86,6 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
                 tx_speed, B_max - 0.1
             )  # Avoid division by zero and unrealistic speeds
             cost = 1.0 + 5.0 * (1 / (1 - (U / B_max)))
-
-            state = "PREEMPTED" if routing_app.is_preempted else "NORMAL"
-
-            # print(f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12}")
-            # print(
-            #     f"{stat.port_no:<5} | {rx_speed:<12.4f} | {tx_speed:<12.4f} | {stat.rx_packets + stat.tx_packets:<12} | {cost:<12.2f} | {state:<12}"
-            # )
 
         # Preemption logic
         if str(dpid) in routing_app.preemption_map:
@@ -102,3 +103,30 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
             # If the video port is not congested (under 6 Mbps) and we have preempted -> Rollback the video traffic
             elif is_active and v_speed < 6.0:
                 routing_app.execute_rollback(dpid, v_port, h_port)
+
+        # Determine QoS state for logging
+        is_active = routing_app.is_preempted.get(dpid, False)
+        state = "PREEMPTED" if is_active else "NORMAL"
+
+        with open(self.csv_file, mode='a', newline='') as file:
+            csv_writer = csv.writer(file, delimiter=';')
+            elapsed_time = round(time.time() - self.start_time, 1)
+
+            # Log header for the current switch and timestamp
+            self.logger.info(f"\n[Switch {dpid:016x} Traffic Report, Timestamp: {elapsed_time}]")
+            self.logger.info(f"{'Port':<5} | {'RX (Mbps)':<12} | {'TX (Mbps)':<12} | {'Tot. Packets':<12} | {'State QoS':<12}")
+            self.logger.info("-" * 64)
+
+            #  Log stats for each port
+            for port_no in sorted(tx_speeds.keys()):
+                r_sp = rx_speeds[port_no]
+                t_sp = tx_speeds[port_no]
+                pkts = tot_packets[port_no]
+
+                # Write to CSV
+                csv_writer.writerow([elapsed_time, dpid, port_no, round(r_sp, 2), round(t_sp, 2), pkts, state])
+
+                # Log to console
+                self.logger.info(
+                    f"{port_no:<5} | {r_sp:<12.4f} | {t_sp:<12.4f} | {pkts:<12} | {state:<12}"
+                )
