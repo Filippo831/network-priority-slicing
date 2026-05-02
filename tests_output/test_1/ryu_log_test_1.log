@@ -1,0 +1,57 @@
+loading app controller.py
+loading app monitor.py
+loading app ryu.controller.ofp_handler
+loading app ryu.topology.switches
+loading app ryu.controller.ofp_handler
+instantiating app controller.py of SimpleRouting13
+instantiating app monitor.py of NetworkTrafficMonitor
+instantiating app ryu.controller.ofp_handler of OFPHandler
+instantiating app ryu.topology.switches of Switches
+
+[Switch 0000000000000001 Traffic Report, Timestamp: 0.0]
+Port  | RX (Mbps)    | TX (Mbps)    | Tot. Packets | State QoS   
+----------------------------------------------------------------
+1     | 0.0059       | 0.0058       | 67           | NORMAL      
+2     | 0.0058       | 0.0059       | 67           | NORMAL      
+3     | 0.0057       | 0.0074       | 80           | NORMAL      
+4     | 0.0056       | 0.0074       | 79           | NORMAL      
+
+[Switch 0000000000000002 Traffic Report, Timestamp: 0.0]
+Port  | RX (Mbps)    | TX (Mbps)    | Tot. Packets | State QoS   
+----------------------------------------------------------------
+1     | 0.0058       | 0.0059       | 67           | NORMAL      
+2     | 0.0059       | 0.0058       | 67           | NORMAL      
+3     | 0.0056       | 0.0074       | 79           | NORMAL      
+4     | 0.0054       | 0.0074       | 78           | NORMAL      
+
+[Switch 0000000000000001 Traffic Report, Timestamp: 5.0]
+Port  | RX (Mbps)    | TX (Mbps)    | Tot. Packets | State QoS   
+----------------------------------------------------------------
+1     | 0.0011       | 0.0011       | 79           | NORMAL      
+2     | 0.0013       | 0.0012       | 82           | NORMAL      
+3     | 0.0011       | 0.0016       | 97           | NORMAL      
+4     | 0.0011       | 0.0016       | 96           | NORMAL      
+
+[Switch 0000000000000002 Traffic Report, Timestamp: 5.0]
+Port  | RX (Mbps)    | TX (Mbps)    | Tot. Packets | State QoS   
+----------------------------------------------------------------
+1     | 0.0011       | 0.0011       | 79           | NORMAL      
+2     | 0.0012       | 0.0013       | 82           | NORMAL      
+3     | 0.0011       | 0.0016       | 96           | NORMAL      
+4     | 0.0011       | 0.0015       | 94           | NORMAL      
+
+[Switch 0000000000000001 Traffic Report, Timestamp: 10.0]
+Port  | RX (Mbps)    | TX (Mbps)    | Tot. Packets | State QoS   
+----------------------------------------------------------------
+1     | 0.0000       | 0.0000       | 79           | NORMAL      
+2     | 0.0069       | 0.0070       | 175          | NORMAL      
+3     | 0.0048       | 0.0052       | 163          | NORMAL      
+4     | 0.0048       | 0.0053       | 163          | NORMAL      
+
+[Switch 0000000000000002 Traffic Report, Timestamp: 10.0]
+Port  | RX (Mbps)    | TX (Mbps)    | Tot. Packets | State QoS   
+----------------------------------------------------------------
+1     | 0.0000       | 0.0000       | 79           | NORMAL      
+2     | 0.0070       | 0.0069       | 175          | NORMAL      
+3     | 0.0047       | 0.0053       | 162          | NORMAL      
+4     | 0.0047       | 0.0054       | 161          | NORMAL      

@@ -52,7 +52,7 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
 
         if not self.csv_file:
             test_name = getattr(routing_app, "test_name", "unknown_test")
-            self.csv_file = f'tests_output/traffic_report_{test_name}.csv'
+            self.csv_file = f'tests_output/{test_name}/traffic_report_{test_name}.csv'
 
             with open(self.csv_file, mode='w', newline='') as file:
                 writer = csv.writer(file, delimiter=';')

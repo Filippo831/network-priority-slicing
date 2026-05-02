@@ -230,7 +230,7 @@ class TestScenarios(unittest.TestCase):
             self.ryu_process.wait()
 
         test_name = config_file.split('/')[-1].split('.')[0]
-        log_file_path = f"tests_output/ryu_log_{test_name}.log"
+        log_file_path = f"tests_output/{test_name}/ryu_log_{test_name}.log"
 
         with open(log_file_path, "w") as f:
             pass  # clear log file before starting the controller
