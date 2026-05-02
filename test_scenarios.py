@@ -435,7 +435,7 @@ class TestScenarios(unittest.TestCase):
                     # h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 6 + 1))
                         if h.name != "h%d" % j:
                             h.cmd("ping -c 1 10.0.0.%d &" % j)
-            time.sleep(10)
+            time.sleep(4)
 
             # check topology and routing at init state
             print("\nChecking topology and routing at the beginning...")
@@ -457,11 +457,22 @@ class TestScenarios(unittest.TestCase):
             self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
             print("Checked topology and routing at the beginning")
 
+            h1 = net.get("h1")
+            h2 = net.get("h2")
+            h3 = net.get("h3")
+            h4 = net.get("h4")
+            s1 = net.get("s1")
+
+            # generate traffic from h1 to h3 at 8Mbps and from h2 to h4 at 8Mbps
+            print("\nGenerating initial traffic from h1 to h3 at 8Mbps and from h2 to h4 at 8Mbps...")
+            h2.cmd("iperf -c %s -u -b 8M -t 60 &" % h4.IP())
+            h1.cmd("iperf -c %s -u -b 8M -t 10 &" % h3.IP())
+
+            time.sleep(10)
+
             # increase traffic from h1 to h3 to 15Mbps
             print("\nIncreasing traffic from h1 to h3 to 15Mbps...")
-            h1 = net.get("h1")
-            h3 = net.get("h3")
-            h1.cmd("iperf -c %s -u -b 15M -t 10 &" % h3.IP())
+            h1.cmd("iperf -c %s -u -b 15M -t 15 &" % h3.IP())
             time.sleep(10)
 
             # check if the port s1-eth1 had increased the bandwidth to 15Mbps and s1-eth2 had decreased to 5Mbps
@@ -512,6 +523,13 @@ class TestScenarios(unittest.TestCase):
             print("Checked connectivity between all hosts after link cut")
 
             time.sleep(5)
+
+            # Decrease traffic from h1 to h3 to 8Mbps
+            print("\nDecreasing traffic from h1 to h3 to 8Mbps...")
+            h1.cmd("iperf -c %s -u -b 8M -t 15 &" % h3.IP())
+
+            time.sleep(6)
+
             # check if the bandwidth went back to normal after traffic decrease (10Mbps for both ports)
             print("\nChecking bandwidth settings after traffic decrease...")
             s1_eth1_bw = s1.cmd("tc qdisc show dev s1-eth1")
