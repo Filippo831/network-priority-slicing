@@ -29,18 +29,18 @@
       "key": 2
     },
     {
-      "port": 2,
-      "priority": 0,
-      "source": "3",
-      "target": "1",
-      "key": 2
-    },
-    {
       "port": 1,
       "priority": 0,
       "source": "3",
       "target": "2",
       "key": 1
+    },
+    {
+      "port": 2,
+      "priority": 0,
+      "source": "3",
+      "target": "1",
+      "key": 2
     }
   ]
 }

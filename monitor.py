@@ -87,6 +87,9 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
             )  # Avoid division by zero and unrealistic speeds
             cost = 1.0 + 5.0 * (1 / (1 - (U / B_max)))
 
+        v_port = None
+        h_port = None
+
         # Preemption logic
         if str(dpid) in routing_app.preemption_map:
             config = routing_app.preemption_map[str(dpid)]
@@ -96,8 +99,8 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
             v_speed = tx_speeds.get(v_port, 0)
             is_active = routing_app.is_preempted.get(dpid, False)
 
-            # If the video port is congested (over 8.5 Mbps) and we haven't preempted yet -> Preempt the video traffic
-            if not is_active and v_speed > 8.5:
+            # If the video port is congested (over 9.5 Mbps) and we haven't preempted yet -> Preempt the video traffic
+            if not is_active and v_speed > 9.5:
                 routing_app.execute_preemption(dpid, v_port, h_port)
 
             # If the video port is not congested (under 6 Mbps) and we have preempted -> Rollback the video traffic
@@ -123,10 +126,16 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
                 t_sp = tx_speeds[port_no]
                 pkts = tot_packets[port_no]
 
+                # Determine if this port is currently preempted  
+                if is_active and port_no in (v_port, h_port):
+                    port_state = "PREEMPTED"
+                else:
+                    port_state = "NORMAL"
+
                 # Write to CSV
-                csv_writer.writerow([elapsed_time, dpid, port_no, round(r_sp, 2), round(t_sp, 2), pkts, state])
+                csv_writer.writerow([elapsed_time, dpid, port_no, round(r_sp, 2), round(t_sp, 2), pkts, port_state])
 
                 # Log to console
                 self.logger.info(
-                    f"{port_no:<5} | {r_sp:<12.4f} | {t_sp:<12.4f} | {pkts:<12} | {state:<12}"
+                    f"{port_no:<5} | {r_sp:<12.4f} | {t_sp:<12.4f} | {pkts:<12} | {port_state:<12}"
                 )

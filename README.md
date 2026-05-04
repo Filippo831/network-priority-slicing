@@ -78,14 +78,16 @@ h2                     h4
 #### Setup
 | Priority | Hosts | Links |
 | --- | --- | --- |
-| 0 | h1, h3 | s1-eth1<->s2-eth1 |
-| 1 | h2, h4 | s1-eth2<->s2-eth2 |
+| 0 | `h1`, `h3` | `s1-eth1<->s2-eth1` |
+| 1 | `h2`, `h4` | `s1-eth2<->s2-eth2` |
 
 #### Scenario
-##### After 10 seconds - link failure
-- s1-eth1<->s2-eth1 link failure: the link between s1 and s2 fails.
+##### Start (Baseline Traffic)
+- **h1 <-> h3:** Traffic flows through the primary high-priority link (Priority 0) directly connecting switch `s1` and switch `s2` (`s1-eth1 <-> s2-eth1`).
 
-- Controller detects the failure and updates the topology graph accordingly. In this case the traffic between h1 and h3 is rerouted through s1-eth2<->s2-eth2, which is the link with the closest lower priority.
+##### Link Failure & Priority Degradation
+- **s1-eth1 <-> s2-eth1 Link Failure:** After 10 seconds, the primary Priority 0 link between `s1` and `s2` is physically severed.
+- **Action:** The Controller immediately detects the link down event and updates its internal topology graph. Since the optimal Priority 0 path is no longer available, the routing algorithm performs a graceful degradation. The `h1 <-> h3` traffic is dynamically rerouted through the backup link with the closest lower priority (`s1-eth2 <-> s2-eth2`, Priority 1). This ensures uninterrupted connectivity by falling back to the Best Effort network slice.
 
 ### Test case #2
 <!-- ![Network design](./assets/network_design.md) -->
@@ -105,25 +107,26 @@ h6                ┌┘└┐                h4
 ##### Hosts
 | Priority | Hosts | Links |
 | --- | --- | --- |
-| 0 | h1, h3, h5 | s1-eth1<->s2-eth1; s1-eth3<->s3-eth1|
-| 1 | h2, h4, h6 | s1-eth2<->s2-eth2; s1-eth4<->s3-eth2|
+| 0 | `h1`, `h3`, `h5` | `s1-eth1<->s2-eth1`; `s1-eth3<->s3-eth1`|
+| 1 | `h2`, `h4`, `h6` | `s1-eth2<->s2-eth2`; `s1-eth4<->s3-eth2`|
 
 #### Scenario
-##### Start
-- h1 -> h3: 5 Mbps priority 0.
-- h2 -> h4: 8 Mbps priority 1.
-##### After 15 seconds - preemption mechanism
-- h1 -> h3: 15Mbps: bitrate of the video stream from h1 to h3 exceeds the maximum bitrate available.
+##### Start (Baseline Traffic)
+- **h1 -> h3:** 8 Mbps on the Video slice (Priority 0).
+- **h2 -> h4:** 8 Mbps on the Best Effort slice (Priority 1).
+- Both streams fit perfectly within the default 10 Mbps physical limits of their respective links.
 
-- Controller detects the increase in bandwidth usage and dynamically reallocates bandwidth from the Best Effort slice (Priority 1) to the Video slice (Priority 0). This ensures that the high-priority traffic continues to flow smoothly without packet loss, even during the spike in demand.
-##### After 20 seconds - link failure
-- s1-eth3<->s3-eth1 link failure: the link between s1 and s2 fails.
+##### Bitrate Spike & Preemption Mechanism
+- **h1 -> h3 (Spike):** The bitrate of the video stream suddenly spikes to 15 Mbps, exceeding the maximum 10 Mbps hardware capacity of the Priority 0 link.
+- **Action:** The SDN Controller detects the congestion (bandwidth usage > 8.5 Mbps) and dynamically triggers the **Egress Traffic Shaping**. It reallocates bandwidth by throttling the Best Effort slice down to 5 Mbps, while expanding the Video slice to 15 Mbps. This guarantees that high-priority video traffic flows smoothly without packet loss during the spike.
 
-- Controller detects the failure and updates the topology graph accordingly. In this case the priority 0 traffic that were supposed to flow through the failed link will be rerouted through the link with the closer lower priority the link with priority 1.
-##### After 35 seconds - elastic rollback
-- Close connection h1 -> h3: the connection from h1 to h3 is closed.
+##### Link Failure & Rerouting
+- **s1-eth3 <-> s3-eth1 Link Failure:** The primary link between switch `s1` and switch `s3` is physically severed while the network is congested.
+- **Action:** The Controller detects the topological change and recalculates the shortest paths. The priority 0 traffic that was supposed to flow through the failed link is immediately rerouted through the backup link with the closest lower priority (Priority 1), avoiding service downtime.
 
-- Controller detects the change in traffic patterns and restores the original bandwidth allocation for the Best Effort slice (Priority 1), ensuring that all network slices return to their baseline physical configuration.
+##### Elastic Rollback
+- **End of Spike:** The video stream spike ends, and the `h1 -> h3` traffic drops back to its normal 8 Mbps baseline.
+- **Action:** The Controller's Monitor component detects that the bandwidth utilization on the Video slice has dropped below the safe threshold (< 6.0 Mbps). It executes a Rollback operation, automatically restoring the original 10 Mbps hardware limits for both the Video and Best Effort slices, returning the network to its initial state.
 
 ### Test case #3
 ```
@@ -142,10 +145,12 @@ h3──┤s3├──────────┤s2├──h2
 ###### Hosts
 | Priority | Hosts | Links |
 | --- | --- | --- |
-| 0 | h1, h3, h5 | s1-eth1<->s2-eth1; s1-eth1<->s2-eth1; s1-eth2<->s3-eth2|
+| 0 | `h1`, `h2`, `h3` | `s1-eth1<->s2-eth1`; `s1-eth1<->s2-eth1`; `s1-eth2<->s3-eth2`|
 
 #### Scenario
-##### After 10 seconds - link failure
-- s1-eth1<->s2-eth1 link failure: link between s1 and s2 fails.
+##### Start (Baseline Traffic)
+- **h1 <-> h2:** Traffic flows through the shortest, direct link between switch `s1` and switch `s2` (`s1-eth1 <-> s2-eth1`).
 
-- Controller detects the failure and updates the topology graph accordingly. In this case the traffic between h1 and h2 is rerouted through s1-eth2<->s3-eth2 and s3-eth1<->s2-eth1.
+##### Link Failure & Multi-Hop Rerouting
+- **s1-eth1 <-> s2-eth1 Link Failure:** After 10 seconds, the direct link connecting `s1` and `s2` fails, completely breaking the shortest path.
+- **Action:** The Controller detects the failure and updates the global topology graph. Recognizing that a direct connection is no longer possible, the routing algorithm recalculates the shortest path across the broader network ring. The `h1 <-> h2` traffic is successfully rerouted to take the alternative multi-hop path, flowing first through switch `s3` (`s1-eth2 <-> s3-eth2`) and then reaching its destination (`s3-eth1 <-> s2-eth1`). This demonstrates the system's resilience and ability to handle complex, indirect failover scenarios.
