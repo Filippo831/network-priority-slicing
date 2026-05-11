@@ -435,7 +435,7 @@ class TestScenarios(unittest.TestCase):
                     # h.cmd("ping -c 1 10.0.0.%d &" % (int(h.name[1]) % 6 + 1))
                         if h.name != "h%d" % j:
                             h.cmd("ping -c 1 10.0.0.%d &" % j)
-            time.sleep(4)
+            time.sleep(10)
 
             # check topology and routing at init state
             print("\nChecking topology and routing at the beginning...")
@@ -494,7 +494,7 @@ class TestScenarios(unittest.TestCase):
                         if h.name != "h%d" % j:
                             h.cmd("ping -c 1 10.0.0.%d &" % j)
 
-            time.sleep(3)
+            time.sleep(10)
 
             # check the topology and routing after the link cut
             print("\nChecking topology and routing after link cut...")
