@@ -176,7 +176,7 @@ h3──┤s3├──────────┤s2├──h2
 ## Team
 [![Tommaso Castagnaro](https://badgen.net/badge/icon/Tommaso%20Castagnaro/e88127?icon=github&label&labelColor=000)](https://github.com/tommyc03)
 [![Luca Fossa Crescini](https://badgen.net/badge/icon/Luca%20Fossa%20Crescini/8ed827?icon=github&label&labelColor=000)](https://github.com/luca531)
-[![Filippo Arduini](https://badgen.net/badge/icon/Filippo%20Arduini/c8c110?icon=github&label&labelColor=000)](https://github.com/tommyc03)
+[![Filippo Arduini](https://badgen.net/badge/icon/Filippo%20Arduini/c8c110?icon=github&label&labelColor=000)](https://github.com/Filippo831)
 - **Tommaso Castagnaro**: Preemption mechanism
 - **Luca Fossa Crescini**: Graph and failure handling
 - **Filippo Arduini**: dynamic path learning, testing

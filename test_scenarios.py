@@ -75,6 +75,8 @@ def cut_link_test_1(net):
     else:
         pass
     print("\nLink between s1-eth1 and s2-eth1 cut")
+    time.sleep(5)
+    ryu_log_message("test_1", "Link between s1-eth1 and s2-eth1 cut")
 
 
 
@@ -146,6 +148,8 @@ def cut_link_test_2(net):
     else:
         pass
     print("\nLink between s1-eth3 and s3-eth1 cut")
+    time.sleep(5)
+    ryu_log_message("test_2", "Link between s1-eth3 and s3-eth1 cut")
 
 class TopologyTest3(Topo):
     def __init__(self):
@@ -198,6 +202,8 @@ def cut_link_test_3(net):
     else:
         pass
     print("\nLink between s1-eth1 and s2-eth1 cut")
+    time.sleep(5)
+    ryu_log_message("test_3", "Link between s1-eth1 and s2-eth1 cut")
 
 def normalize_topo_graph(graph):
     normalized_links = []
@@ -217,6 +223,16 @@ def normalize_topo_graph(graph):
     normalized_links.sort(key=lambda x: (x["nodes"], x["port"], x["priority"]))
     return normalized_links
 
+def ryu_log_message(test_name, message):
+    log_file_path = f"tests_output/{test_name}/ryu_log_{test_name}.log"
+    try:
+        with open(log_file_path, 'a') as f:
+            f.write(f"\n{'-'*64}\n")
+            f.write(f"[ORCHESTRATOR] {message}\n")
+            f.write(f"{'-'*64}\n")
+            f.flush()
+    except Exception as e:
+        print(f"Error writing to log: {e}")
 
 
 # class for scenarios testing
@@ -338,6 +354,18 @@ class TestScenarios(unittest.TestCase):
 
             print("Checked topology and routing before link cut")
 
+            h1 = net.get("h1")
+            h3 = net.get("h3")
+
+            h1.cmd("iperf -c %s -u -b 8M -t 60 &" % h3.IP())
+            print("\nGenerating traffic from h1 to h3 at 8Mbps...")
+
+            time.sleep(4)
+
+            ryu_log_message("test_1", "Generating initial traffic from h1 to h3 at 8Mbps...")
+
+            time.sleep(4)
+
             cut_link_test_1(net)
             time.sleep(4)
             for i in range(5):
@@ -376,6 +404,8 @@ class TestScenarios(unittest.TestCase):
             self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
 
             print("Checked topology and routing after link cut")
+
+            time.sleep(5)
 
         finally:
             net.stop()
@@ -465,26 +495,27 @@ class TestScenarios(unittest.TestCase):
 
             # generate traffic from h1 to h3 at 8Mbps and from h2 to h4 at 8Mbps
             print("\nGenerating initial traffic from h1 to h3 at 8Mbps and from h2 to h4 at 8Mbps...")
-            h2.cmd("iperf -c %s -u -b 8M -t 60 &" % h4.IP())
+            ryu_log_message("test_2", "Generating initial traffic from h1 to h3 at 8Mbps and from h2 to h4 at 8Mbps")
+            h2.cmd("iperf -c %s -u -b 8M -t 120 &" % h4.IP())
             h1.cmd("iperf -c %s -u -b 8M -t 10 &" % h3.IP())
 
             time.sleep(10)
 
-            # increase traffic from h1 to h3 to 15Mbps
-            print("\nIncreasing traffic from h1 to h3 to 15Mbps...")
-            h1.cmd("iperf -c %s -u -b 15M -t 15 &" % h3.IP())
-            time.sleep(10)
+            # increase traffic from h1 to h3 to 13Mbps
+            print("\nIncreasing traffic from h1 to h3 to 13Mbps...")
+            ryu_log_message("test_2", "Increasing traffic from h1 to h3 to 13Mbps")
+            h1.cmd("iperf -c %s -u -b 13M -t 20 &" % h3.IP())
+            time.sleep(5)
 
             # check if the port s1-eth1 had increased the bandwidth to 15Mbps and s1-eth2 had decreased to 5Mbps
             print("\nChecking bandwidth settings after traffic increase...")
-            s1 = net.get("s1")
             s1_eth1_bw = s1.cmd("tc qdisc show dev s1-eth1")
             s1_eth2_bw = s1.cmd("tc qdisc show dev s1-eth2")
             self.assertIn("rate 15Mbit", s1_eth1_bw)
             self.assertIn("rate 5Mbit", s1_eth2_bw)
             print("Checked bandwidth settings after traffic increase")
 
-            time.sleep(3)
+            time.sleep(5)
             cut_link_test_2(net)
             
             # random traffic to learn paths sending a ping from each host to each other host
@@ -494,7 +525,7 @@ class TestScenarios(unittest.TestCase):
                         if h.name != "h%d" % j:
                             h.cmd("ping -c 1 10.0.0.%d &" % j)
 
-            time.sleep(10)
+            time.sleep(5)
 
             # check the topology and routing after the link cut
             print("\nChecking topology and routing after link cut...")
@@ -526,9 +557,10 @@ class TestScenarios(unittest.TestCase):
 
             # Decrease traffic from h1 to h3 to 8Mbps
             print("\nDecreasing traffic from h1 to h3 to 8Mbps...")
-            h1.cmd("iperf -c %s -u -b 8M -t 15 &" % h3.IP())
+            ryu_log_message("test_2", "Decreasing traffic from h1 to h3 to 8Mbps")
+            h1.cmd("iperf -c %s -u -b 8M -t 60 &" % h3.IP())
 
-            time.sleep(6)
+            time.sleep(4)
 
             # check if the bandwidth went back to normal after traffic decrease (10Mbps for both ports)
             print("\nChecking bandwidth settings after traffic decrease...")
@@ -622,8 +654,18 @@ class TestScenarios(unittest.TestCase):
             pingall_result = net.pingAll()
             self.assertEqual(pingall_result, 0)
             print("Checked connectivity between all hosts before link cut")
+
+            h1 = net.get("h1")
+            h2 = net.get("h2")
+
+            h1.cmd("iperf -c %s -u -b 8M -t 60 &" % h2.IP())
+            print("\nGenerating traffic from h1 to h2 at 8Mbps...")
+
+            time.sleep(4)
+
+            ryu_log_message("test_3", "Generating initial traffic from h1 to h2 at 8Mbps...")
             
-            time.sleep(3)
+            time.sleep(5)
             cut_link_test_3(net)
             time.sleep(3)
 
@@ -658,6 +700,8 @@ class TestScenarios(unittest.TestCase):
             )
             self.assertEqual(switch_priority_to_port, expected_switch_priority_to_port)
             print("Checked topology and routing after link cut")
+
+            time.sleep(5)
 
             # test connectivity between hosts after link cut
 

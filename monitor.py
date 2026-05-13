@@ -64,6 +64,14 @@ class NetworkTrafficMonitor(app_manager.RyuApp):
         rx_speeds = {}
         tot_packets = {}
 
+        """
+            Ports monitoring and preemption logic:
+            - For each port, calculate the current throughput based on the difference in byte counts since the last measurement.
+            - If the port is configured for preemption (e.g., video port) and the throughput exceeds a certain threshold (e.g., 9.5 Mbps), trigger the preemption logic in the routing application to prioritize video traffic.
+            - If the port is configured for preemption and the throughput drops below a certain threshold (e.g., 6 Mbps), trigger the rollback logic in the routing application to restore normal bandwidth settings.
+            - Log the current throughput and preemption state for each port to a CSV file for later analysis, and also print it to the console for real-time monitoring.
+        """
+
         for stat in sorted(body, key=lambda x: x.port_no):
             if stat.port_no == 0xFFFFFFFE:
                 continue  # Skip local port

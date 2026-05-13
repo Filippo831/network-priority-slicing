@@ -3,6 +3,8 @@ import os
 
 
 class Config:
+    """ Configuration class to load and store settings from a JSON file. """
+    
     def load_config(self, path):
         if os.path.exists(path):
             with open(path, "r") as f:
