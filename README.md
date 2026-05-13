@@ -2,13 +2,31 @@
 
 ## Table of contents
 - [Overview](#overview)
+- [Structure](#structure)
 - [Features](#features)
 - [Getting started](#getting-started)
-- [Test case](#test-case)
+- [Test cases](#test-cases)
+- [Team](#team)
 
 
 ## Overview
 A Ryu-based OpenFlow 1.3 controller that implements **Priority-Based Slicing**, **Adaptive Path Discovery** and **QoS management**. 
+
+## Structure
+```
+.
+├── tests_output/       # store all the intermediate expected routing table and graph for testing
+├── configurations/     # configurations of the priority for the tests and manual run
+├── config.py           # read the configuration files
+├── controller.py       # controller script entry point
+├── flow_manager.py     # module for managing the flow rules and routing tables
+├── graph.py            # module for maintaining the topology graph and performing path calculations
+├── monitor.py          # module for monitoring the network state and triggering preemption
+├── qos.py              # module for managing the QoS and preemption mechanism
+├── README.md
+├── test_scenarios.py   # test cases
+└── topology.py         # manual topology creation script
+```
 
 
 ## Features
@@ -61,7 +79,7 @@ sudo python3 topology.py
 ```
 
 ## Test cases
-To run the test cases, run this command
+To run the test cases, execute this command
 ```
 $ sudo -E python3 -m unittest
 ```
@@ -154,3 +172,11 @@ h3──┤s3├──────────┤s2├──h2
 ##### Link Failure & Multi-Hop Rerouting
 - **s1-eth1 <-> s2-eth1 Link Failure:** After 10 seconds, the direct link connecting `s1` and `s2` fails, completely breaking the shortest path.
 - **Action:** The Controller detects the failure and updates the global topology graph. Recognizing that a direct connection is no longer possible, the routing algorithm recalculates the shortest path across the broader network ring. The `h1 <-> h2` traffic is successfully rerouted to take the alternative multi-hop path, flowing first through switch `s3` (`s1-eth2 <-> s3-eth2`) and then reaching its destination (`s3-eth1 <-> s2-eth1`). This demonstrates the system's resilience and ability to handle complex, indirect failover scenarios.
+
+## Team
+[![Tommaso Castagnaro](https://badgen.net/badge/icon/Tommaso%20Castagnaro/e88127?icon=github&label&labelColor=000)](https://github.com/tommyc03)
+[![Luca Fossa Crescini](https://badgen.net/badge/icon/Luca%20Fossa%20Crescini/8ed827?icon=github&label&labelColor=000)](https://github.com/luca531)
+[![Filippo Arduini](https://badgen.net/badge/icon/Filippo%20Arduini/c8c110?icon=github&label&labelColor=000)](https://github.com/tommyc03)
+- **Tommaso Castagnaro**: Preemption mechanism
+- **Luca Fossa Crescini**: Graph and failure handling
+- **Filippo Arduini**: dynamic path learning, testing
