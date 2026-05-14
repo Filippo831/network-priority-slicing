@@ -504,8 +504,8 @@ class TestScenarios(unittest.TestCase):
             # increase traffic from h1 to h3 to 13Mbps
             print("\nIncreasing traffic from h1 to h3 to 13Mbps...")
             ryu_log_message("test_2", "Increasing traffic from h1 to h3 to 13Mbps")
-            h1.cmd("iperf -c %s -u -b 13M -t 20 &" % h3.IP())
-            time.sleep(5)
+            h1.cmd("iperf -c %s -u -b 13M -t 25 &" % h3.IP())
+            time.sleep(10)
 
             # check if the port s1-eth1 had increased the bandwidth to 15Mbps and s1-eth2 had decreased to 5Mbps
             print("\nChecking bandwidth settings after traffic increase...")
